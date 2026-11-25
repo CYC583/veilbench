@@ -3,11 +3,13 @@ export * from 'firebase/ai';
 
 export function getGenerativeModel(_ai, options) {
   return {
-    async generateContent(input) {
+    async generateContent(input, requestOptions) {
       const text = typeof input === 'string' ? input : input.filter(part => typeof part === 'string').join('\n');
       const local = options.mode !== InferenceMode.ONLY_IN_CLOUD;
       window.__vbCalls.push({ mode: options.mode, online: navigator.onLine, local });
       if (!local && !navigator.onLine) throw Error('Cloud fixture is offline');
+      // Let the cancel test release a late SDK success after the real AbortSignal fires.
+      if (text.includes('overallRisk') && window.__holdTriage) await window.__holdTriage(requestOptions?.signal);
       let result;
       if (text.includes('strict local PII detector')) result = { entities: [] };
       else if (text.includes('overallRisk')) result = { overallRisk: 'medium', headline: 'Offline payment review', flags: [{ id: 'payment', title: 'Payment terms', severity: 'medium', plainSummary: 'Review the payment term.', excerpt: 'Payment' }] };

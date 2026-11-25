@@ -97,3 +97,45 @@ test('a relay link fragment is stripped before any request and never leaves the 
   expect(seen.filter(url => url.includes(id))).toEqual([]);
   await expect(page.locator('#relay-link')).toHaveValue('');
 });
+
+test('cancelling an in-flight run leaves no failure card or late result', async ({ page }) => {
+  await page.evaluate(() => {
+    window.__holdTriage = signal => new Promise(resolve => {
+      window.__triageSignal = signal;
+      window.__finishTriage = resolve;
+    });
+  });
+  await page.getByRole('button', { name: sample }).click();
+  const triage = page.getByRole('button', { name: /Stage 2 · Rapid Triage/ });
+  await triage.click();
+  await page.waitForFunction(() => typeof window.__finishTriage === 'function');
+  await page.getByTestId('cancel-run').click();
+  await expect(page.getByText(/^Cancelled\./)).toBeVisible();
+  expect(await page.evaluate(() => window.__triageSignal.aborted)).toBe(true);
+  await page.evaluate(async () => {
+    window.__finishTriage();
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
+  await expect(triage).toBeEnabled();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Dismiss error' })).toHaveCount(0);
+  await expect(page.getByText('Offline payment review', { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('decision-card')).toHaveCount(0);
+});
+
+test('opening or pasting an invalid iPhone link displays a clear error', async ({ page }) => {
+  const malformed = 'https://veilbench-hybrid-ai.web.app/#relay=invalid';
+  const panel = page.getByTestId('relay-panel');
+  const message = 'Paste the link shared from VeilBench Pocket on your iPhone.';
+  await page.getByTestId('relay-open').click();
+  await panel.getByLabel('Shared link').fill(malformed);
+  await panel.getByRole('button', { name: 'Open', exact: true }).click();
+  await expect(panel.getByRole('alert')).toHaveText(message);
+  await expect(page.getByTestId('relay-result')).toHaveCount(0);
+  // A fresh visit exercises captureRelayFragment before React subscribes to hash changes.
+  await page.goto('about:blank');
+  await page.goto('/#relay=invalid');
+  await expect(panel.getByRole('alert')).toHaveText(message);
+  expect(await page.evaluate(() => location.hash)).toBe('');
+  await expect(page.getByTestId('relay-result')).toHaveCount(0);
+});
