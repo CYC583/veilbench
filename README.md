@@ -31,7 +31,7 @@ Masking data before a cloud call blinds the cloud: it sees `[MONEY_AMOUNT_1]` an
 2. **In the cloud:** Gemini reasons over tokens and relations and writes `{{DIFF:[MONEY_AMOUNT_1]-[MONEY_AMOUNT_3]}}` where an exact number matters.
 3. **On-device:** the browser fills in `$6,000 (12.5%)` and applies a transparent rule to reach the decision.
 
-The on-device first verdict (Gemini Nano) and the cloud deep audit **start at the same time**; the decision card shows the first answer and upgrades in place, with both timers visible.
+The on-device first verdict (Gemini Nano) and the cloud deep audit **start at the same time**; the decision card shows the first answer and upgrades in place, with both timers visible. Any running step can be cancelled; a cancelled or superseded answer is never shown.
 
 ---
 
@@ -60,7 +60,9 @@ Every AI call goes through **Firebase AI Logic** (`firebase/ai`). File paths poi
 - **Pixel burn-in.** Sensitive regions of scans are painted over on a canvas before any image leaves; you can also draw boxes by hand.
 - **Verify it yourself.** The Payload Inspector shows the exact outbound text. Download it and run `shasum -a 256 veilbench-outbound-payload.txt`; the digest equals the hash on screen. **Try to leak** un-redacts one token so you can watch Layer 3 block the request.
 - **Network egress ledger.** Every cross-origin request the page sends is recorded (service, host, bytes, SHA-256; never the body). For AI Logic requests the ledger confirms the body carries text that passed Layer 3. Export everything as `veilbench-outbound.json`.
-- **Zero-PII storage.** Firestore stores tokens only; `firestore.rules` allows a fixed field list per anonymous user.
+- **Zero-PII storage you control.** Firestore stores tokens only; `firestore.rules` allows a fixed field list per anonymous user, and you can delete any saved session (or all of them) from History.
+- **You can add what the detectors missed.** Type a word (a name, a project code) and it is masked in every document, in every casing, before the outbound check re-runs.
+- **Chinese documents too.** Without Nano, the rules also catch 甲方／乙方 parties, labeled Chinese names, company names (股份有限公司…), Taiwanese addresses, 新臺幣 amounts and ROC dates; the exact gap math works on 新臺幣 amounts.
 
 Detection is best effort, which is why every outbound byte is shown and checked before sending. See [SECURITY.md](./SECURITY.md) for the threat model and known limitations.
 
@@ -81,6 +83,8 @@ Detection is best effort, which is why every outbound byte is shown and checked 
 
 - **Chrome extension** ([`extension/`](./extension)): select text on any page → right-click **Check with VeilBench**. The page receives it through `window.postMessage({ type: 'veilbench.intake.v1' })`, masks it locally, and asks before anything goes to the cloud. Install with `chrome://extensions` → Developer mode → **Load unpacked** → `extension/`.
 - **WebMCP tools** (Chrome origin trial): `veilbench_check_contract` and `veilbench_get_decision`. Results contain tokens only; exact amounts are shown to the user on-device and never returned to an agent. Source: [`src/integrations/agentSurface.ts`](./src/integrations/agentSurface.ts).
+- **Files:** PDF (text extracted on-device with pdf.js; scanned PDFs become an image for pixel redaction), Word `.docx`, text, PNG and JPEG, up to 20 MB. Phone photos are scaled to 2000 px before redaction. Nothing is uploaded at this step.
+- **From iPhone:** VeilBench Pocket shares a link (`…#relay=<128-bit id>`); opening it on the web shows the iPhone's token-only audit. The fragment never reaches a server, the link expires after 15 minutes, and the real values stay on the phone.
 - **iOS:** see [`ios/README.md`](./ios/README.md).
 
 ## Leak benchmark
