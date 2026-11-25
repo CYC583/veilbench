@@ -6,7 +6,8 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
+import { getEgressEntries, subscribeEgress, type EgressEntry } from '../services/egressLedger';
 import type { PreFlightAssertion, VaultMap, ZeroLeakProof } from '../types/privacy';
 import type { SupportedLocale, WorkbenchDocument } from '../types/audit';
 import { DEEP_AUDIT_TASK_ANALYSIS, DEEP_AUDIT_TASK_PLAYBOOK, redactWithVault } from '../core';
@@ -43,6 +44,7 @@ export function PayloadInspectorModal({
 }: PayloadInspectorModalProps) {
   // Hooks must run before the early return below.
   const [copiedPayload, setCopiedPayload] = useState(false);
+  const ledger = useSyncExternalStore(subscribeEgress, getEgressEntries, getEgressEntries);
   if (!isOpen) return null;
 
   const isZh = locale === 'zh-TW';
@@ -286,6 +288,11 @@ export function PayloadInspectorModal({
                 {`${DEEP_AUDIT_TASK_ANALYSIS}\n\n${DEEP_AUDIT_TASK_PLAYBOOK}`}
               </pre>
             </details>
+            <EgressLedgerSection
+              ledger={ledger}
+              isZh={isZh}
+              onDownload={() => downloadOutboundJson(combinedSanitizedPayload, zeroLeakProof, ledger)}
+            />
           </div>
         </div>
 
@@ -321,6 +328,101 @@ export function PayloadInspectorModal({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+const channelLabel: Record<EgressEntry['channel'], string> = {
+  ai_logic: 'AI Logic',
+  firestore: 'Firestore',
+  app_check: 'App Check',
+  auth: 'Auth',
+  remote_config: 'Remote Config',
+  telemetry: 'Telemetry',
+  other: 'Other',
+};
+
+/** A3: outbound.json = the audited payload, its hash, image hashes and the egress ledger (no bodies, no vault). */
+function downloadOutboundJson(payload: string, proof: ZeroLeakProof | null, ledger: EgressEntry[]) {
+  const doc = {
+    schema: 'veilbench.outbound-receipt.v1',
+    exportedAt: new Date().toISOString(),
+    payloadSha256: proof?.sanitizedPayloadHash ?? null,
+    payload,
+    outboundImageHashes: proof?.outboundImageHashes ?? [],
+    verify: 'Save "payload" exactly (UTF-8, no trailing newline) and run: shasum -a 256 <file>. It must equal payloadSha256.',
+    egressLedger: ledger,
+  };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'veilbench-outbound.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function EgressLedgerSection({ ledger, isZh, onDownload }: {
+  ledger: EgressEntry[];
+  isZh: boolean;
+  onDownload: () => void;
+}) {
+  const aiCalls = ledger.filter(e => e.channel === 'ai_logic');
+  const aiBytes = aiCalls.reduce((n, e) => n + e.bytes, 0);
+  const unmatched = aiCalls.filter(e => e.carriesAuditedText === false).length;
+  const recent = ledger.slice(-12).reverse();
+  return (
+    <div className="mt-3 rounded-md border border-[#E2E5EA] bg-[#FFFFFF]" data-testid="egress-ledger">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E2E5EA] px-3 py-2">
+        <div className="min-w-0">
+          <p className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[#141518]">
+            {isZh ? '網路出口帳本（本次工作階段）' : 'Network egress ledger (this session)'}
+          </p>
+          <p className="mt-0.5 text-[11.5px] leading-snug text-[#5C626E]">
+            {isZh
+              ? `每一個離開這個頁面的請求：目的地、位元組數、SHA-256。AI Logic：${aiCalls.length} 次、${aiBytes.toLocaleString()} bytes${unmatched ? `，其中 ${unmatched} 次未對到本頁的 Layer 3 內容（例如另行脫敏的追問）` : ''}。不記錄內容。`
+              : `Every request that left this page: destination, bytes, SHA-256. AI Logic: ${aiCalls.length} calls, ${aiBytes.toLocaleString()} bytes${unmatched ? `; ${unmatched} did not match this page's Layer 3 text (e.g. a separately sanitized follow-up)` : ''}. Bodies are never stored.`}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onDownload}
+          className="inline-flex min-h-[44px] shrink-0 items-center rounded-md border border-[#0F766E]/40 bg-[#FFFFFF] px-3 text-[12px] font-medium text-[#0F766E] sm:min-h-[32px]"
+        >
+          {isZh ? '下載 outbound.json' : 'Download outbound.json'}
+        </button>
+      </div>
+      {recent.length === 0 ? (
+        <p className="px-3 py-2 text-[12px] text-[#5C626E]">
+          {isZh ? '還沒有任何請求離開這個頁面。' : 'Nothing has left this page yet.'}
+        </p>
+      ) : (
+        <div className="max-h-44 overflow-auto">
+          <table className="w-full min-w-[520px] text-left font-mono text-[11px]">
+            <thead className="sticky top-0 bg-[#F8F9FA] text-[#5C626E]">
+              <tr>
+                <th className="px-3 py-1.5 font-normal">{isZh ? '時間' : 'Time'}</th>
+                <th className="px-2 py-1.5 font-normal">{isZh ? '服務' : 'Service'}</th>
+                <th className="px-2 py-1.5 font-normal">{isZh ? '主機' : 'Host'}</th>
+                <th className="px-2 py-1.5 text-right font-normal">Bytes</th>
+                <th className="px-3 py-1.5 font-normal">{isZh ? '已過 Layer 3' : 'Layer 3 text'}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recent.map(e => (
+                <tr key={e.id} className="border-t border-[#E2E5EA] text-[#141518]" title={e.sha256 ? `SHA-256 ${e.sha256}` : undefined}>
+                  <td className="px-3 py-1">{e.at.slice(11, 19)}</td>
+                  <td className="px-2 py-1">{channelLabel[e.channel]}</td>
+                  <td className="max-w-[180px] truncate px-2 py-1 text-[#5C626E]">{e.host}</td>
+                  <td className="px-2 py-1 text-right tabular-nums">{e.bytes.toLocaleString()}</td>
+                  <td className="px-3 py-1">
+                    {e.carriesAuditedText === null ? '—' : e.carriesAuditedText ? (isZh ? '是' : 'yes') : (isZh ? '未對到' : 'no match')}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

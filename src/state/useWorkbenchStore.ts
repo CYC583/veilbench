@@ -68,6 +68,7 @@ import {
   saveSanitizedSession,
   type FirestoreSyncState,
 } from '../services/sessionStore';
+import { registerAuditedTexts } from '../services/egressLedger';
 import { SAMPLE_PACKS, type SampleDocumentSpec } from '../data/sampleDocuments';
 import { SAMPLE_GOLDEN_AUDITS, type GoldenAuditRecord } from '../data/sampleGoldenAudits';
 
@@ -1275,6 +1276,13 @@ export function useWorkbenchStore() {
   );
 
   const combinedSanitizedPayload = outboundPayload;
+
+  // A3: let the egress ledger confirm that AI Logic request bodies carry only Layer 3-checked text.
+  useEffect(() => {
+    registerAuditedTexts(preFlight?.passed
+      ? [outboundPayload, combineDocumentsText(documents, 'sanitizedText')]
+      : []);
+  }, [documents, outboundPayload, preFlight]);
 
   const decisionCard = useMemo(
     () => buildDecisionCard({ triage, deepAudit, vault }),
