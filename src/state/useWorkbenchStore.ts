@@ -793,8 +793,8 @@ export function useWorkbenchStore() {
     setErrorBanner(null);
     setCloudFailure(null);
 
-    const { assertion, payload } = await recomputeSecurityProof(documents, vault, entitiesByDoc);
-    if (!assertion || !assertion.passed) {
+    const { assertion, proof, payload } = await recomputeSecurityProof(documents, vault, entitiesByDoc);
+    if (!assertion || !assertion.passed || !proof?.preFlightPassed) {
       pushTelemetry({
         id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         timestamp: new Date().toISOString(),
@@ -852,6 +852,9 @@ export function useWorkbenchStore() {
         signal: deepSignal,
         prompt: payload,
         documents,
+        // The approval that matches this exact envelope and these exact burned images (same snapshot of
+        // documents, vault and toggles). The server-template path re-checks it and stops on any mismatch.
+        templateProof: { vault, disabledTokens: collectDisabledTokens(entitiesByDoc), proof },
         mode: decision.recommendedMode,
         remoteConfig,
         onRetryNotice: inParallel ? undefined : setStageMessage,
