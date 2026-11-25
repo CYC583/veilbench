@@ -1,0 +1,147 @@
+{
+  "completedAt": "2026-11-25T21:18:47.097Z",
+  "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36",
+  "corpusSha256": "f6b245bdeecb4901ed8317f28dfebb5306a981d922c0d515446721610185ddac",
+  "rows": [
+    {
+      "id": "contract",
+      "total": 3,
+      "missed": 0,
+      "source": "ON_DEVICE",
+      "latencyMs": 6748
+    },
+    {
+      "id": "quotation",
+      "total": 3,
+      "missed": 0,
+      "source": "ON_DEVICE",
+      "latencyMs": 1945
+    },
+    {
+      "id": "change-order",
+      "total": 3,
+      "missed": 0,
+      "source": "ON_DEVICE",
+      "latencyMs": 1504
+    },
+    {
+      "id": "statement",
+      "total": 2,
+      "missed": 0,
+      "source": "ON_DEVICE",
+      "latencyMs": 1083
+    },
+    {
+      "id": "lease",
+      "total": 3,
+      "missed": 1,
+      "source": "ON_DEVICE",
+      "latencyMs": 1470
+    },
+    {
+      "id": "referral",
+      "total": 3,
+      "missed": 1,
+      "source": "ON_DEVICE",
+      "latencyMs": 1413
+    },
+    {
+      "id": "follow-up",
+      "total": 3,
+      "missed": 1,
+      "source": "ON_DEVICE",
+      "latencyMs": 1497
+    },
+    {
+      "id": "lab",
+      "total": 2,
+      "missed": 0,
+      "source": "ON_DEVICE",
+      "latencyMs": 1303
+    },
+    {
+      "id": "discharge",
+      "total": 2,
+      "missed": 0,
+      "source": "ON_DEVICE",
+      "latencyMs": 1075
+    },
+    {
+      "id": "benefits",
+      "total": 2,
+      "missed": 0,
+      "source": "ON_DEVICE",
+      "latencyMs": 1379
+    },
+    {
+      "id": "service-order",
+      "total": 2,
+      "missed": 0,
+      "source": "ON_DEVICE",
+      "latencyMs": 1552
+    },
+    {
+      "id": "incident",
+      "total": 2,
+      "missed": 0,
+      "source": "ON_DEVICE",
+      "latencyMs": 1194
+    },
+    {
+      "id": "subscription",
+      "total": 3,
+      "missed": 0,
+      "source": "ON_DEVICE",
+      "latencyMs": 1572
+    },
+    {
+      "id": "credit",
+      "total": 3,
+      "missed": 0,
+      "source": "ON_DEVICE",
+      "latencyMs": 1340
+    },
+    {
+      "id": "support",
+      "total": 2,
+      "missed": 0,
+      "source": "ON_DEVICE",
+      "latencyMs": 1510
+    },
+    {
+      "id": "dispatch",
+      "total": 2,
+      "missed": 0,
+      "source": "ON_DEVICE",
+      "latencyMs": 1290
+    },
+    {
+      "id": "consent",
+      "total": 2,
+      "missed": 0,
+      "source": "ON_DEVICE",
+      "latencyMs": 1325
+    },
+    {
+      "id": "transfer",
+      "total": 2,
+      "missed": 1,
+      "source": "ON_DEVICE",
+      "latencyMs": 1316
+    },
+    {
+      "id": "itinerary",
+      "total": 3,
+      "missed": 1,
+      "source": "ON_DEVICE",
+      "latencyMs": 1733
+    },
+    {
+      "id": "memo",
+      "total": 3,
+      "missed": 1,
+      "source": "ON_DEVICE",
+      "latencyMs": 1262
+    }
+  ]
+}
