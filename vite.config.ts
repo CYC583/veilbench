@@ -21,18 +21,20 @@ export default defineConfig({
     __BUILD_ID__: JSON.stringify(resolveBuildId()),
   },
   build: {
+    // Two chunks sit just above 500 kB and are single libraries: Firestore (needed at start for the offline
+    // cache) and pdf.js (loaded only when a PDF is opened). Everything else is split per service below.
+    chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
-        manualChunks: {
-          firebase: [
-            'firebase/app',
-            'firebase/ai',
-            'firebase/app-check',
-            'firebase/auth',
-            'firebase/firestore',
-            'firebase/remote-config',
-          ],
-          react: ['react', 'react-dom', 'lucide-react'],
+        // Split vendors by service so no chunk exceeds 500 kB and each caches independently.
+        manualChunks(id: string) {
+          if (!id.includes('node_modules')) return undefined;
+          // Keep each wrapper (firebase/x) with its implementation (@firebase/x): splitting them creates a
+          // circular chunk import that breaks module initialization order in production.
+          if (/[\\/]@?firebase[\\/]firestore/.test(id)) return 'firebase-firestore';
+          if (/[\\/](?:@firebase|firebase)[\\/]/.test(id) || id.includes('/idb/')) return 'firebase-core';
+          if (/[\\/](?:react|react-dom|scheduler|lucide-react)[\\/]/.test(id)) return 'react';
+          return undefined;
         },
       },
     },
