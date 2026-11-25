@@ -1,5 +1,6 @@
 import {
   getGenerativeModel,
+  getTemplateGenerativeModel,
   InferenceMode,
   InferenceSource,
   Schema,
@@ -24,7 +25,10 @@ import type {
   RemoteHybridConfig,
   TelemetryEvent,
 } from '../types/hybrid';
-import type { RawNanoEntityCandidate } from '../types/privacy';
+import { getBoolean } from 'firebase/remote-config';
+import { assertPayloadZeroLeak } from '../core/preFlightGuard';
+import { sha256Hex } from '../core/proofGenerator';
+import type { RawNanoEntityCandidate, VaultMap, ZeroLeakProof } from '../types/privacy';
 import type {
   ChatTurn,
   DeepAuditResult,
@@ -534,6 +538,53 @@ export async function runRapidTriage(params: {
  */
 export type DeepAuditPart = 'analysis' | 'playbook';
 
+// These versioned server templates have a fixed model in their Dotprompt frontmatter.
+const TEMPLATE_MODEL = 'gemini-3.5-flash-lite';
+
+interface TemplateProof {
+  vault: VaultMap;
+  disabledTokens?: Set<string>;
+  proof: ZeroLeakProof;
+}
+
+async function checkedTemplateRequests(
+  envelope: string,
+  docs: WorkbenchDocument[],
+  checked?: TemplateProof,
+) {
+  const reject = () => new Error('Layer 3 blocked Stage 4: template inputs do not match the approved outbound proof.');
+  if (!checked?.proof.preFlightPassed || await sha256Hex(envelope) !== checked.proof.sanitizedPayloadHash) {
+    throw reject();
+  }
+  const { vault, disabledTokens } = checked;
+  const images: Array<{ mime_type: string; contents: string }> = [];
+  const hashes = checked.proof.outboundImageHashes ?? [];
+  for (const doc of docs) {
+    if (doc.rawImageDataUrl && doc.requiresImageReview && !doc.imageReviewed) throw reject();
+    const burned = doc.redactedImageDataUrl;
+    if (!burned) continue;
+    const part = dataUrlToInlinePart(burned);
+    if (!part?.inlineData || await sha256Hex(burned) !== hashes[images.length]?.sha256) throw reject();
+    images.push({ mime_type: part.inlineData.mimeType, contents: part.inlineData.data });
+  }
+  if (images.length !== hashes.length) throw reject();
+
+  async function prepare(inputs: Record<string, unknown>, task: string) {
+    // The SDK serializes exactly {inputs} for templateGenerateContent. Audit the semantic text
+    // as well as the serialized body (including its escaping) and fingerprint the actual bytes.
+    const wireBody = JSON.stringify({ inputs });
+    for (const text of [envelope + '\n\n' + task, wireBody]) {
+      if (!assertPayloadZeroLeak(text, vault, disabledTokens).passed) throw reject();
+    }
+    return { inputs, sha256: await sha256Hex(wireBody) };
+  }
+  return {
+    analysis: await prepare({ envelope, images }, DEEP_AUDIT_TASK_ANALYSIS),
+    playbook: await prepare({ envelope, differenceSyntax: '{{DIFF:[TOKEN_A]-[TOKEN_B]}}' }, DEEP_AUDIT_TASK_PLAYBOOK),
+  };
+}
+
+
 /** Marker for a Stage 4 half intentionally not requested in a partial retry. */
 class SkippedPart extends Error {}
 
@@ -543,6 +594,8 @@ export async function runDeepRedlineAudit(params: {
   mode: HybridInferenceMode;
   remoteConfig: RemoteHybridConfig;
   onRetryNotice?: (message: string) => void;
+  /** Approval and reviewed image hashes captured together with this exact envelope. */
+  templateProof?: TemplateProof;
   /** Exact outbound envelope from buildDeepAuditPrompt, already Layer 3-verified by the caller. */
   prompt: string;
   /** Re-run only these halves (partial retry); the caller merges them into the previous result. */
@@ -567,6 +620,18 @@ export async function runDeepRedlineAudit(params: {
     const part = doc.redactedImageDataUrl ? dataUrlToInlinePart(doc.redactedImageDataUrl) : null;
     return part ? [part] : [];
   });
+
+  const serviceConfig = getFirebaseServices().remoteConfig;
+  const useTemplate = (params.mode === 'prefer_in_cloud' || params.mode === 'only_in_cloud') &&
+    params.remoteConfig.cloudModelName === TEMPLATE_MODEL &&
+    serviceConfig && getBoolean(serviceConfig, 'use_server_prompt_template');
+  let templates: Awaited<ReturnType<typeof checkedTemplateRequests>> | undefined;
+  try {
+    if (useTemplate) templates = await checkedTemplateRequests(params.prompt, params.documents, params.templateProof);
+  } catch (error) {
+    perfTrace?.stop();
+    throw error;
+  }
 
   const runPart = async <T,>(
     part: DeepAuditPart,
@@ -594,28 +659,34 @@ export async function runDeepRedlineAudit(params: {
         retriesPerModel: 0,
       },
       async (modelName) => {
-        const result = await getGenerativeModel(
-          ai,
-          {
-            mode: toSdkInferenceMode(params.mode),
-            onDeviceParams: { createOptions: { signal: params.signal } },
-            inCloudParams: {
-              model: modelName,
-              generationConfig: {
-                responseMimeType: 'application/json',
-                responseSchema: schema,
-                temperature: 0.2,
-                maxOutputTokens: capFor(modelName),
+        const template = modelName === TEMPLATE_MODEL ? templates?.[part] : undefined;
+        const result = template
+          ? await getTemplateGenerativeModel(ai, STAGE4_REQUEST_OPTIONS).generateContent(
+              `veilbench-stage4-${part}-v1`, template.inputs, { signal: params.signal },
+            )
+          : await getGenerativeModel(
+              ai,
+              {
+                mode: toSdkInferenceMode(params.mode),
+                onDeviceParams: { createOptions: { signal: params.signal } },
+                inCloudParams: {
+                  model: modelName,
+                  generationConfig: {
+                    responseMimeType: 'application/json',
+                    responseSchema: schema,
+                    temperature: 0.2,
+                    maxOutputTokens: capFor(modelName),
+                  },
+                },
               },
-            },
-          },
-          STAGE4_REQUEST_OPTIONS
-        ).generateContent(withImages ? [text, ...imageParts] : [text], { signal: params.signal });
+              STAGE4_REQUEST_OPTIONS
+            ).generateContent(withImages ? [text, ...imageParts] : [text], { signal: params.signal });
         const parsed = safeJsonParse<T>(result.response.text());
         // Never invent a placeholder result: a malformed answer is a failed call.
         if (!parsed) throw new Error(`Cloud Gemini returned malformed JSON for Stage 4 ${part}.`);
         return {
           parsed,
+          wireHash: template?.sha256,
           source: mapActualSource(result.response.inferenceSource),
           usage: result.response.usageMetadata,
         };
@@ -631,7 +702,9 @@ export async function runDeepRedlineAudit(params: {
       piiInterceptedCount: 0,
       cloudModelUsed: value.source === 'IN_CLOUD' ? modelUsed : undefined,
       status: 'ok',
-      note: `Stage 4 ${part} (schema-enforced) completed via ${value.source}.`,
+      note: value.wireHash
+        ? `Stage 4 ${part} (server template) completed via ${value.source}. Request SHA-256: ${value.wireHash}`
+        : `Stage 4 ${part} (schema-enforced) completed via ${value.source}.`,
     });
     return { parsed: value.parsed, source: value.source, telemetry };
   };
