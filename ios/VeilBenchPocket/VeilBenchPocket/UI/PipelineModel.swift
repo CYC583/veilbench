@@ -51,8 +51,7 @@ final class PipelineModel {
   private(set) var log: [StepLogEntry] = []
   private(set) var syncStatus = ""
   private(set) var relayStatus = ""
-  private(set) var recipientApproved = false
-  private(set) var relayCode: String?
+  private(set) var relay: PocketRelay?
   private(set) var publishingRelay = false
   private var pendingExport: PocketResult?
   private var revision = UUID()
@@ -79,8 +78,7 @@ final class PipelineModel {
   private func resetResults() {
     revision = UUID()
     pendingExport = nil
-    recipientApproved = false
-    relayCode = nil
+    relay = nil
     publishingRelay = false
     relayStatus = ""
     syncStatus = ""
@@ -210,7 +208,9 @@ final class PipelineModel {
     }
   }
 
-  var canPublish: Bool { pendingExport != nil && !publishingRelay && relayCode == nil }
+  var canPublish: Bool {
+    pendingExport != nil && !publishingRelay && (relay?.expiresAt ?? .distantPast) <= Date()
+  }
 
   func publishRelay() async {
     guard canPublish, let pendingExport else { return }
@@ -219,28 +219,12 @@ final class PipelineModel {
     relayStatus = "Waiting for server confirmation…"
     defer { if revision == started { publishingRelay = false } }
     do {
-      let code = try await PocketServices.publishRelay(pendingExport)
+      let published = try await PocketServices.publishRelay(pendingExport)
       guard revision == started else { return }
-      relayCode = code
-      relayStatus = "Enter the pairing code on the web, then enter the confirmation number shown by that browser below."
+      relay = published
+      relayStatus = ""
     } catch {
       if revision == started { relayStatus = "Could not publish the relay. Try again when online." }
-    }
-  }
-
-  func approveRecipient(challenge: String) async {
-    guard let relayCode, !recipientApproved, !publishingRelay else { return }
-    let started = revision
-    publishingRelay = true
-    defer { if revision == started { publishingRelay = false } }
-    do {
-      try await PocketServices.approveRecipient(code: relayCode, challenge: challenge)
-      guard revision == started else { return }
-      recipientApproved = true
-      relayStatus = "Browser approved. Use the read button on that browser."
-    } catch {
-      guard revision == started else { return }
-      relayStatus = (error as? PocketServices.PairingError)?.errorDescription ?? "Approval was not confirmed. Check connectivity and try again."
     }
   }
 
