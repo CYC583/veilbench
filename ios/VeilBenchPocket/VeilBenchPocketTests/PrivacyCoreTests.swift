@@ -53,6 +53,14 @@ final class PIIShieldTests: XCTestCase {
     XCTAssertEqual(result.sanitizedText, "Paid to [PERSON_NAME_1] by wire.")
   }
 
+  func testEveryCasingOfAShortOnDeviceValueIsVaulted() {
+    let text = "ada signed; Ada paid; ADA left."
+    let result = PIIShield.runLocalAirlock(rawText: text, onDeviceCandidates: [
+      PIICandidate(value: "Ada", role: .personName, layer: .onDevice),
+    ])
+    XCTAssertFalse(result.sanitizedText.localizedCaseInsensitiveContains("ada"), result.sanitizedText)
+  }
+
   func testOnDeviceMislabeledStructuredValuesYieldToRules() {
     let result = PIIShield.runLocalAirlock(rawText: SampleDocuments.sampleContract, onDeviceCandidates: [
       PIICandidate(value: "IBAN US89-4829-1104-8821", role: .address, layer: .onDevice),

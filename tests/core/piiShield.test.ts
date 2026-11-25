@@ -110,6 +110,12 @@ describe('local vault and selective redaction', () => {
     expect(result.sanitizedText).toBe('Paid to [PERSON_NAME_1] by wire.');
     expect(rehydrateText(result.sanitizedText, result.vault)).toBe(rawText);
   });
+  it('vaults every casing of a short Nano value that occurs in the text', () => {
+    const rawText = 'ada signed; Ada paid; ADA left.';
+    const result = runLocalAirlock({ rawText, documentId: 'A', nanoCandidates: [name('Ada')] });
+    expect(result.sanitizedText.toLowerCase()).not.toContain('ada');
+    expect(rehydrateText(result.sanitizedText, result.vault)).toBe(rawText);
+  });
   it('returns independent empty vaults and zero counts for empty input', () => {
     const a = createEmptyVault();
     a.roleCounters.EMAIL = 5;

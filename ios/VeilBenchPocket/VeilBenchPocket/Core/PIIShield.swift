@@ -202,21 +202,41 @@ enum PIIShield {
   /// generic defined terms; the model can paraphrase or hallucinate, the vault must not.
   static func sanitizeOnDeviceCandidates(_ candidates: [PIICandidate], in text: String) -> [PIICandidate] {
     var seen = Set<String>()
-    return candidates.compactMap { c in
+    var accepted: [PIICandidate] = []
+    for c in candidates {
       let trimmed = c.value.trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ".,;:\"'()")))
       let key = trimmed.lowercased()
       guard trimmed.count >= 2, trimmed.count <= 120, !trimmed.contains("["), !genericTerms.contains(key),
-            !seen.contains(key),
-            let found = text.range(of: trimmed, options: [.caseInsensitive]) else { return nil }
-      // Keep the exact text as written in the document, so `locate` (literal for short values) always finds
-      // it. Otherwise a case-mismatched short value ("ada" vs "Ada") would pass here yet never be vaulted.
-      let value = String(text[found])
+            !seen.contains(key), text.range(of: trimmed, options: [.caseInsensitive]) != nil else { continue }
       // Structured formats (IBAN, routing, email, phone, money, dates, IDs) are owned by the deterministic
       // rules, which assign the precise role; the model sometimes mislabels them (e.g. IBAN as ADDRESS).
-      if scanDeterministic(value).contains(where: { $0.role != .address }) { return nil }
+      if scanDeterministic(trimmed).contains(where: { $0.role != .address }) { continue }
       seen.insert(key)
-      return PIICandidate(value: value, role: c.role, layer: .onDevice)
+      accepted.append(PIICandidate(value: trimmed, role: c.role, layer: .onDevice))
+      // `locate` is literal for short values, so add every other casing that actually occurs in the text
+      // ("ada" and "ADA" for "Ada"); each one is vaulted, none is dropped.
+      if !matchesCaseInsensitively(c.role, trimmed) {
+        for variant in casingsInText(text, trimmed) where variant != trimmed {
+          accepted.append(PIICandidate(value: variant, role: c.role, layer: .onDevice))
+        }
+      }
     }
+    return accepted
+  }
+
+  /// Every distinct casing of `value` that occurs in `text` (case-insensitive scan, exact substrings).
+  static func casingsInText(_ text: String, _ value: String) -> [String] {
+    let ns = text as NSString
+    var found: [String] = []
+    var start = 0
+    while start < ns.length {
+      let r = ns.range(of: value, options: [.caseInsensitive], range: NSRange(location: start, length: ns.length - start))
+      if r.location == NSNotFound || r.length == 0 { break }
+      let s = ns.substring(with: r)
+      if !found.contains(s) { found.append(s) }
+      start = r.location + 1
+    }
+    return found
   }
 
   // MARK: Longest-match location

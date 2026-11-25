@@ -141,6 +141,19 @@ export function matchesCaseInsensitively(role: SemanticRole, value: string): boo
   return value.length >= 4 && caseInsensitiveRoles.includes(role);
 }
 
+/** Every distinct casing of `value` that occurs in `text` (case-insensitive scan, exact slices). */
+export function casingsInText(text: string, value: string): string[] {
+  const needle = value.toLowerCase();
+  if (!needle || needle.length !== value.length) return [];
+  const lowered = text.toLowerCase();
+  if (lowered.length !== text.length) return [];
+  const found = new Set<string>();
+  for (let at = lowered.indexOf(needle); at >= 0; at = lowered.indexOf(needle, at + 1)) {
+    found.add(text.slice(at, at + value.length));
+  }
+  return [...found];
+}
+
 interface Span<T> { start: number; end: number; candidate: T }
 
 // Claim longest literal spans first, even when a shorter value starts earlier.
@@ -198,17 +211,17 @@ export function runLocalAirlock(params: {
       candidates.set(entry.originalValue, { value: entry.originalValue, role: entry.role, layer: 'deterministic_regex' });
     }
   }
-  const loweredRaw = rawText.toLowerCase();
   for (const candidate of nanoCandidates) {
     const trimmed = candidate.value.trim();
     if (trimmed.length < 2) continue;
-    // Use the exact text as written in the document: `locate` is literal for short values, so a
-    // case-mismatched Nano value ("ada" for "Ada") would otherwise never be vaulted.
-    const at = loweredRaw.indexOf(trimmed.toLowerCase());
-    const value = at >= 0 && trimmed.toLowerCase().length === trimmed.length
-      ? rawText.slice(at, at + trimmed.length)
-      : trimmed;
-    candidates.set(value, { ...candidate, value, layer: 'gemini_nano' });
+    candidates.set(trimmed, { ...candidate, value: trimmed, layer: 'gemini_nano' });
+    // `locate` is literal for short values, so add every other casing that actually occurs in the text
+    // ("ada" and "ADA" for "Ada"); each one is vaulted, none is dropped.
+    if (!matchesCaseInsensitively(candidate.role, trimmed)) {
+      for (const variant of casingsInText(rawText, trimmed)) {
+        if (!candidates.has(variant)) candidates.set(variant, { ...candidate, value: variant, layer: 'gemini_nano' });
+      }
+    }
   }
   for (const candidate of scanDeterministicPii(rawText)) {
     const prior = candidates.get(candidate.value);
