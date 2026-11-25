@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
   @State private var model = PipelineModel()
   @State private var previewExpanded = false
+  @State private var showServices = false
   @FocusState private var editorFocused: Bool
 
   var body: some View {
@@ -28,6 +29,23 @@ struct ContentView: View {
           Button("Done") { editorFocused = false }
         }
       }
+      .sheet(isPresented: $showServices) {
+        NavigationStack {
+          List {
+            if model.cloudConfigured {
+              LabeledContent("Firebase AI Logic", value: "Device and cloud audit")
+              LabeledContent("App Check", value: "Cloud attestation")
+              LabeledContent("Remote Config", value: "Model selection")
+              LabeledContent("Anonymous Auth", value: "Private session owner")
+              LabeledContent("Cloud Firestore", value: "Sessions and relays")
+            } else {
+              Text("Local configuration only. Cloud services are unavailable.")
+            }
+          }
+          .navigationTitle("About / Services")
+          .toolbar { Button("Done") { showServices = false } }
+        }
+      }
       .task { await runDemoLaunchArguments(proxy) }
     }
   }
@@ -36,6 +54,8 @@ struct ContentView: View {
 
   private var header: some View {
     VStack(alignment: .leading, spacing: 6) {
+      Button("About / Services") { showServices = true }
+        .font(.footnote)
       Text("VEILBENCH POCKET")
         .font(.caption.monospaced().weight(.semibold)).tracking(1.2).foregroundStyle(Theme.accent)
       Text("Contract airlock").font(.largeTitle.weight(.bold)).foregroundStyle(Theme.ink)
@@ -265,6 +285,17 @@ struct ContentView: View {
         sendButton(title: "Retry")
       case .done(let report, _):
         auditResults(report)
+        Divider()
+        Text(model.syncStatus).font(.footnote)
+        Text("Anyone signed in with the six-digit code can read the tokenized flags and letter for 15 minutes.")
+          .font(.caption).foregroundStyle(Theme.muted)
+        if let code = model.relayCode {
+          Text(code).font(.title.monospacedDigit()).textSelection(.enabled)
+        } else {
+          Button("Create pairing code") { Task { await model.publishRelay() } }
+            .disabled(!model.canPublish)
+        }
+        if !model.relayStatus.isEmpty { Text(model.relayStatus).font(.footnote) }
       }
     }
   }

@@ -49,6 +49,12 @@ final class PipelineModel {
   private(set) var layer3: Layer3State?
   private(set) var cloud: CloudState = .idle
   private(set) var log: [StepLogEntry] = []
+  private(set) var syncStatus = ""
+  private(set) var relayStatus = ""
+  private(set) var relayCode: String?
+  private(set) var publishingRelay = false
+  private var pendingExport: PocketResult?
+  private var revision = UUID()
   var showRestored = false
 
   let cloudConfigured: Bool
@@ -70,6 +76,12 @@ final class PipelineModel {
   }
 
   private func resetResults() {
+    revision = UUID()
+    pendingExport = nil
+    relayCode = nil
+    publishingRelay = false
+    relayStatus = ""
+    syncStatus = ""
     stage1 = nil
     layer3 = nil
     cloud = .idle
@@ -155,10 +167,12 @@ final class PipelineModel {
                               latencyMs: nil, outcome: .blocked))
       return
     }
+    let started = revision
     cloud = .running
     let t0 = Date()
     let result = await CloudAuditor.audit(payload: layer3.payload)
     let ms = Int(Date().timeIntervalSince(t0) * 1000)
+    guard revision == started else { return }
     switch result {
     case .success(let report):
       cloud = .done(report, latencyMs: ms)
@@ -170,12 +184,45 @@ final class PipelineModel {
       log.append(StepLogEntry(site: .onDeviceRules, title: "Re-hydration ready",
                               detail: "Tokens restored only on this iPhone · \(restored) exact difference\(restored == 1 ? "" : "s") computed locally",
                               latencyMs: nil, outcome: .ok))
+      do {
+        let export = try PocketResult(report: report, payload: layer3.payload, vault: stage1.airlock.vault)
+        pendingExport = export
+        syncStatus = "Waiting for Firestore confirmation…"
+        Task {
+          do {
+            try await PocketServices.saveSession(export)
+            if revision == started { syncStatus = "Synced" }
+          } catch {
+            if revision == started { syncStatus = "Session sync failed." }
+          }
+        }
+      } catch {
+        syncStatus = "Session and relay blocked by export checks."
+      }
     case .failure(let failure):
       cloud = .failed(failure)
       let codes = failure.attempts.map { a in "\(a.model)#\(a.attempt) \(a.status.map(String.init) ?? a.kind?.rawValue ?? "?")" }
       log.append(StepLogEntry(site: .cloud(model: failure.attempts.last?.model ?? CloudResilience.primaryModel),
                               title: "Cloud audit failed", detail: codes.joined(separator: " · "),
                               latencyMs: ms, outcome: .failed))
+    }
+  }
+
+  var canPublish: Bool { pendingExport != nil && !publishingRelay && relayCode == nil }
+
+  func publishRelay() async {
+    guard canPublish, let pendingExport else { return }
+    let started = revision
+    publishingRelay = true
+    relayStatus = "Waiting for server confirmation…"
+    defer { if revision == started { publishingRelay = false } }
+    do {
+      let code = try await PocketServices.publishRelay(pendingExport)
+      guard revision == started else { return }
+      relayCode = code
+      relayStatus = "Enter the code on the web within 15 minutes."
+    } catch {
+      if revision == started { relayStatus = "Could not publish the relay. Try again when online." }
     }
   }
 

@@ -55,7 +55,8 @@ enum CloudAuditor {
   }
 
   static func audit(payload: String) async -> Result<AuditReport, CloudFailure> {
-    let result = await CloudResilience.run { model in
+    let models = await PocketServices.models()
+    let result = await CloudResilience.run(models: models) { model in
       try await requestAudit(payload: payload, model: model)
     }
     return result.map { value, model, attempts in

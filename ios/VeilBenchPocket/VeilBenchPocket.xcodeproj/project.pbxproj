@@ -10,6 +10,9 @@
 		BB0000000000000000000101 /* FirebaseAILogic in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000201 /* FirebaseAILogic */; };
 		BB0000000000000000000102 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000202 /* FirebaseCore */; };
 		BB0000000000000000000103 /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000203 /* FirebaseAppCheck */; };
+		BB0000000000000000000106 /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000206 /* FirebaseRemoteConfig */; };
+		BB0000000000000000000105 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000205 /* FirebaseFirestore */; };
+		BB0000000000000000000104 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000204 /* FirebaseAuth */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -40,6 +43,9 @@
 				BB0000000000000000000101 /* FirebaseAILogic in Frameworks */,
 				BB0000000000000000000102 /* FirebaseCore in Frameworks */,
 				BB0000000000000000000103 /* FirebaseAppCheck in Frameworks */,
+				BB0000000000000000000106 /* FirebaseRemoteConfig in Frameworks */,
+				BB0000000000000000000105 /* FirebaseFirestore in Frameworks */,
+				BB0000000000000000000104 /* FirebaseAuth in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -94,6 +100,9 @@
 				BB0000000000000000000201 /* FirebaseAILogic */,
 				BB0000000000000000000202 /* FirebaseCore */,
 				BB0000000000000000000203 /* FirebaseAppCheck */,
+				BB0000000000000000000206 /* FirebaseRemoteConfig */,
+				BB0000000000000000000205 /* FirebaseFirestore */,
+				BB0000000000000000000204 /* FirebaseAuth */,
 			);
 			productName = VeilBenchPocket;
 			productReference = BB0000000000000000000301 /* VeilBenchPocket.app */;
@@ -367,6 +376,21 @@
 			isa = XCSwiftPackageProductDependency;
 			package = BB0000000000000000000A01 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseAppCheck;
+		};
+		BB0000000000000000000206 /* FirebaseRemoteConfig */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000000000000000000A01 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseRemoteConfig;
+		};
+		BB0000000000000000000205 /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000000000000000000A01 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+		BB0000000000000000000204 /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000000000000000000A01 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

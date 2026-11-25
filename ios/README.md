@@ -13,6 +13,16 @@ VeilBench Pocket is the iPhone version of VeilBench's zero-leak contract audit. 
 
 **Stage 1 never falls back to the cloud.** It uses `.systemModel()` only, never `.hybridModel`. The model may be unavailable (`SystemLanguageModel.default.availability`), it may throw, or it may report an unexpected model version. In each of these cases Pocket continues with the regex layer only, on the phone, and shows a "Local rules only" notice. Raw text is never sent anywhere. The cloud step accepts only a payload that has passed Layer 3, and it re-checks that payload right before sending.
 
+## 稽核同步與接力
+
+Pocket 從 Remote Config 的 `cloud_model_name` 和 `cloud_model_fallbacks` 取得模型順序。首次離線時使用內建順序，已啟用的遠端值可在離線時繼續使用。
+
+完成稽核後，Pocket 對每個即將保存的風險標題、說明與信件重跑 Layer 3。通過後使用 Anonymous Auth 將稽核寫到 `sanitized_sessions`，收到 Firestore 伺服器確認才顯示 **Synced**。Firestore 啟用磁碟持久化。首次匿名登入仍需要連線。原始輸入與本機代號表只存在記憶體。
+
+在稽核結果點選 **Create pairing code** 才會另行分享。網頁使用已登入的 Firebase 身分，對 `relays/{六位數}` 執行單筆伺服器讀取。手機會產生可含前導零的隨機碼，存放最多五筆 `flags`（`title`、`severity`、`summary`）、`emailSanitized`、`createdAt` 與 `expiresAt`。App 將有效期設為 15 分鐘，rules 的上限為 24 小時。Firestore 規則拒絕列舉、修改、刪除與過期讀取。
+
+**接力的安全邊界。** 持碼且登入者可於有效期內讀取。六位數約有 20 位元的隨機空間，Firestore rules 無法對匿名身分逐次限速。代號化文字仍可能包含敏感的商業條款。到期後伺服器拒絕新讀取，先前取得的副本仍存在；自動清除伺服器文件需要另行設定 TTL。
+
 ## Where Firebase AI Logic is called
 
 | What | File:line |
