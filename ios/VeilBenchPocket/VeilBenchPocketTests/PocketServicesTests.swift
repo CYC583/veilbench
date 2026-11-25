@@ -52,4 +52,29 @@ final class PocketServicesTests: XCTestCase {
     XCTAssertEqual(doc["emailSanitized"] as? String, report.email)
   }
 
+  func testRelayUses128RandomBitsAndOnlyPublishesIDInProductionURLFragment() throws {
+    let relay = try PocketShareLink()
+    XCTAssertEqual(relay.id.count, 32)
+    XCTAssertTrue(relay.id.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) })
+    XCTAssertTrue(relay.id != (try PocketShareLink()).id)
+    let components = try XCTUnwrap(URLComponents(url: relay.url, resolvingAgainstBaseURL: false))
+    XCTAssertEqual(components.scheme, "https")
+    XCTAssertEqual(components.host, "veilbench-hybrid-ai.web.app")
+    XCTAssertEqual(components.path, "/")
+    XCTAssertNil(components.query)
+    XCTAssertTrue(components.fragment == "relay=" + relay.id)
+  }
+
+  func testRelayAllowsForClockSkewUnderFifteenMinutesAndContainsOnlyGuardedAuditFields() throws {
+    let issued = Date(timeIntervalSince1970: 1000)
+    let relay = try PocketShareLink(now: issued)
+    let report = AuditReport(flags: [], email: "Signed [PARTY_CONTRACTOR_1]", model: "test", modelVersion: nil, attempts: [])
+    let result = try PocketResult(report: report, payload: "fixture", vault: Vault())
+    let doc = relay.document(for: result)
+    XCTAssertEqual(Set(doc.keys), ["createdAt", "expiresAt", "flags", "emailSanitized"])
+    XCTAssertTrue(doc["createdAt"] is FieldValue)
+    XCTAssertEqual((doc["expiresAt"] as? Timestamp)?.dateValue(), issued.addingTimeInterval(870))
+    XCTAssertEqual(doc["flags"] as? [[String: String]], [])
+    XCTAssertEqual(doc["emailSanitized"] as? String, report.email)
+  }
 }

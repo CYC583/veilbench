@@ -304,9 +304,30 @@ struct ContentView: View {
           Button("Create pairing code") { Task { await model.publishRelay() } }
             .disabled(!model.canPublish)
         }
+        DisclosureGroup("Share by link") {
+          Text("Anyone with the link can read the tokenized flags and letter for up to 15 minutes.")
+            .font(.caption).foregroundStyle(Theme.muted)
+          if let relay = model.shareLink {
+            TimelineView(.explicit([Date(), relay.expiresAt].sorted())) { timeline in
+              if timeline.date < relay.expiresAt {
+                ShareLink(item: relay.url) { Label("Share audit link", systemImage: "square.and.arrow.up") }
+                Text("Expires at \(relay.expiresAt, style: .time)").font(.caption)
+              } else {
+                createLinkButton
+              }
+            }
+          } else {
+            createLinkButton
+          }
+        }
         if !model.relayStatus.isEmpty { Text(model.relayStatus).font(.footnote) }
       }
     }
+  }
+
+  private var createLinkButton: some View {
+    Button("Create share link") { Task { await model.publishShareLink() } }
+      .disabled(!model.canPublishLink)
   }
 
   private func sendButton(title: String) -> some View {

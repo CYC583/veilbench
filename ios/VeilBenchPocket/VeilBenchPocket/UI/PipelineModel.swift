@@ -52,6 +52,7 @@ final class PipelineModel {
   private(set) var syncStatus = ""
   private(set) var relayStatus = ""
   private(set) var recipientApproved = false
+  private(set) var shareLink: PocketShareLink?
   private(set) var relay: PocketRelay?
   private(set) var publishingRelay = false
   private var pendingExport: PocketResult?
@@ -80,6 +81,7 @@ final class PipelineModel {
     revision = UUID()
     pendingExport = nil
     recipientApproved = false
+    shareLink = nil
     relay = nil
     publishingRelay = false
     relayStatus = ""
@@ -226,6 +228,25 @@ final class PipelineModel {
       relayStatus = "Enter the pairing code on the web, then enter the confirmation number shown by that browser below."
     } catch {
       if revision == started { relayStatus = "Could not publish the relay. Try again when online." }
+    }
+  }
+
+  var canPublishLink: Bool {
+    pendingExport != nil && !publishingRelay && (shareLink?.expiresAt ?? .distantPast) <= Date()
+  }
+
+  func publishShareLink() async {
+    guard canPublishLink, let pendingExport else { return }
+    let started = revision
+    publishingRelay = true
+    defer { if revision == started { publishingRelay = false } }
+    do {
+      let link = try await PocketServices.publishShareLink(pendingExport)
+      guard revision == started else { return }
+      shareLink = link
+      relayStatus = ""
+    } catch {
+      if revision == started { relayStatus = "Could not create a share link. Try again when online." }
     }
   }
 

@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import Security
 import FirebaseAuth
 import FirebaseFirestore
 import FirebaseRemoteConfig
@@ -42,6 +43,28 @@ struct PocketResult {
     return ["id": id, "uid": uid, "title": "Pocket contract audit", "category": "contract", "documentCount": 1,
             "sanitizedExcerpts": [], "zeroLeakProofHash": proof, "triage": triage, "deepAudit": deepAudit,
             "updatedAt": timestamp]
+  }
+}
+
+struct PocketShareLink {
+  let id: String
+  let expiresAt: Date
+  var url: URL { URL(string: "https://veilbench-hybrid-ai.web.app/#relay=\(id)")! }
+
+  init(now: Date = Date()) throws {
+    var bytes = [UInt8](repeating: 0, count: 16)
+    let status = bytes.withUnsafeMutableBytes {
+      SecRandomCopyBytes(kSecRandomDefault, $0.count, $0.baseAddress!)
+    }
+    guard status == errSecSuccess else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(status)) }
+    id = bytes.map { String(format: "%02x", $0) }.joined()
+    // Firestore checks the ceiling against server time. Leave room for small client clock offsets.
+    expiresAt = now.addingTimeInterval(15 * 60 - 30)
+  }
+
+  func document(for result: PocketResult) -> [String: Any] {
+    ["createdAt": FieldValue.serverTimestamp(), "expiresAt": Timestamp(date: expiresAt),
+     "flags": result.relayFlags, "emailSanitized": result.email]
   }
 }
 
@@ -127,6 +150,13 @@ enum PocketServices {
       }
     }
     throw PocketResult.ExportError.invalidSize
+  }
+
+  static func publishShareLink(_ result: PocketResult) async throws -> PocketShareLink {
+    _ = try await userID()
+    let relay = try PocketShareLink()
+    try await database.collection("relays").document(relay.id).setData(relay.document(for: result))
+    return relay
   }
 
   enum PairingError: LocalizedError {

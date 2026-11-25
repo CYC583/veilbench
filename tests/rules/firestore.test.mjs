@@ -106,11 +106,25 @@ test('expired relay cannot be retrieved even by its creator', async () => {
   await assertFails(getDoc(handoff('phone', '492100')));
 });
 
-test('a legacy link alone grants no access, even to an existing old relay', async () => {
-  const legacy = 'f'.repeat(32);
+test('malformed IDs grant no access, even when a document exists', async () => {
+  const legacy = 'f'.repeat(31);
   await env.withSecurityRulesDisabled(ctx => setDoc(doc(ctx.firestore(), 'relays', legacy), relay()));
   await assertFails(getDoc(handoff('phone', legacy)));
   await assertFails(getDoc(handoff('browser', legacy)));
   const claim = doc(db('browser'), 'relays', legacy, 'requests', 'browser');
   await assertFails(setDoc(claim, { challenge: '123456', createdAt: serverTimestamp() }));
+});
+
+test('existing high-entropy share links and approved six-digit relays have separate grants', async () => {
+  const link = 'a'.repeat(32);
+  const { ownerUid, ...legacyPayload } = relay();
+  await assertFails(setDoc(handoff('phone', link), { ...legacyPayload, ownerUid }));
+  await assertFails(setDoc(handoff('phone', '121212'), legacyPayload));
+  await assertFails(setDoc(handoff('phone', link), { ...legacyPayload, expiresAt: Timestamp.fromMillis(Date.now() + 3600_000) }));
+  await assertSucceeds(setDoc(handoff('phone', link), legacyPayload));
+  await assertSucceeds(getDoc(handoff('browser', link)));
+  await assertFails(setDoc(handoff('phone', link), legacyPayload));
+  await assertFails(setDoc(doc(db('browser'),'relays',link,'requests','browser'), {
+    challenge: '123456', createdAt: serverTimestamp(),
+  }));
 });
