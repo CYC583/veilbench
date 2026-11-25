@@ -2,6 +2,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   limit,
   orderBy,
@@ -103,5 +104,54 @@ export async function deleteSanitizedSession(id: string): Promise<FirestoreSyncS
     return 'synced';
   } catch {
     return 'failed';
+  }
+}
+
+/** A VeilBench Pocket (iOS) audit handed to the web by a 6-digit code. Tokens only: the vault stays on the phone. */
+export interface RelayAudit {
+  code: string;
+  flags: Array<{ title: string; severity: 'high' | 'medium' | 'low'; summary: string }>;
+  emailSanitized: string;
+  expiresAt: Date | null;
+}
+
+export type RelayReadResult =
+  | { status: 'ok'; audit: RelayAudit }
+  | { status: 'invalid_code' | 'not_found' | 'offline' | 'error' };
+
+/**
+ * Reads relays/{code}. firestore.rules allow a single get of an unexpired code by a signed-in user (no
+ * listing), so an expired or wrong code looks the same as a missing one.
+ */
+export async function readRelayAudit(rawCode: string): Promise<RelayReadResult> {
+  const code = rawCode.replace(/\s+/g, '');
+  if (!/^\d{6}$/.test(code)) return { status: 'invalid_code' };
+  const { db } = getFirebaseServices();
+  const user = await ensureAnonymousUser();
+  if (!db || !user) return { status: 'offline' };
+  try {
+    const snap = await getDoc(doc(db, 'relays', code));
+    if (!snap.exists()) return { status: 'not_found' };
+    const d = snap.data() as Record<string, unknown>;
+    const flags = Array.isArray(d.flags) ? d.flags.filter((f): f is RelayAudit['flags'][number] =>
+      !!f && typeof f === 'object' && typeof (f as { title?: unknown }).title === 'string'
+      && typeof (f as { summary?: unknown }).summary === 'string'
+      && ['high', 'medium', 'low'].includes((f as { severity?: string }).severity ?? '')).slice(0, 5) : [];
+    const expires = d.expiresAt as { toDate?: () => Date } | undefined;
+    return {
+      status: 'ok',
+      audit: {
+        code,
+        flags,
+        emailSanitized: typeof d.emailSanitized === 'string' ? d.emailSanitized : '',
+        expiresAt: typeof expires?.toDate === 'function' ? expires.toDate() : null,
+      },
+    };
+  } catch (err) {
+    const code = (err as { code?: string } | null)?.code;
+    // Rules deny reads of expired codes; to the user that is the same as "not found".
+    if (code === 'permission-denied' || code === 'not-found') return { status: 'not_found' };
+    if (code === 'unavailable') return { status: 'offline' };
+    return { status: 'error' };
   }
 }

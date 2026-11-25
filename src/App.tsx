@@ -13,6 +13,7 @@ import { XRayTelemetryBar } from './components/XRayTelemetryBar';
 import { SessionHistoryDrawer } from './components/SessionHistoryDrawer';
 import { DecisionCard } from './components/DecisionCard';
 import { HeroIntro } from './components/HeroIntro';
+import { RelayOpener } from './components/RelayOpener';
 import {
   READY_MESSAGE,
   parseIntakeMessage,
@@ -269,6 +270,8 @@ export function App() {
           onRemoveDocument={(docId) => void actions.removeDocument(docId)}
         />
         </div>
+
+        <RelayOpener locale={state.locale} />
 
         {state.documents.length > 0 && (
           <PipelineStepper
