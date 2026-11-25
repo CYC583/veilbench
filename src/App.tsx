@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, PlayCircle, Square, X } from 'lucide-react';
 import { useWorkbenchStore } from './state/useWorkbenchStore';
 import { localizeRuntimeMessage } from './i18n/runtimeMessages';
@@ -13,6 +13,12 @@ import { XRayTelemetryBar } from './components/XRayTelemetryBar';
 import { SessionHistoryDrawer } from './components/SessionHistoryDrawer';
 import { DecisionCard } from './components/DecisionCard';
 import { HeroIntro } from './components/HeroIntro';
+import {
+  READY_MESSAGE,
+  parseIntakeMessage,
+  registerWebMcpTools,
+  type IntakeDocument,
+} from './integrations/agentSurface';
 
 /** Guided demo: each step starts only after the previous stage has really finished (stage idle). */
 const GUIDED_STEPS: Array<{ en: string; zh: string }> = [
@@ -43,6 +49,36 @@ export function App() {
   const { state, combinedSanitizedPayload, actions } = useWorkbenchStore();
   const isZh = state.locale === 'zh-TW';
   const [demoStep, setDemoStep] = useState<number | null>(null);
+  const [intakeNotice, setIntakeNotice] = useState<string | null>(null);
+
+  // A10 + A11: the Chrome extension (postMessage) and browser agents (WebMCP) can hand in a document.
+  const addDocumentRef = useRef<(doc: IntakeDocument) => void>(() => {});
+  const decisionRef = useRef(state.decisionCard);
+  useEffect(() => {
+    decisionRef.current = state.decisionCard;
+    addDocumentRef.current = (doc) => {
+      setIntakeNotice(doc.title);
+      void actions.addCustomDocument({ title: doc.title, category: 'contract', rawText: doc.text });
+    };
+  }, [actions, state.decisionCard]);
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      // Only this window (the extension's content script posts into the page); never iframes or other tabs.
+      if (event.source !== window || event.origin !== window.location.origin) return;
+      const doc = parseIntakeMessage(event.data);
+      if (doc) addDocumentRef.current(doc);
+    };
+    window.addEventListener('message', onMessage);
+    window.postMessage({ type: READY_MESSAGE }, window.location.origin);
+    const unregister = registerWebMcpTools({
+      addDocument: (doc) => addDocumentRef.current(doc),
+      getDecision: () => decisionRef.current,
+    });
+    return () => {
+      window.removeEventListener('message', onMessage);
+      unregister();
+    };
+  }, []);
 
   useEffect(() => {
     if (demoStep === null || state.stage !== 'idle') return;
@@ -173,6 +209,19 @@ export function App() {
             </button>
           )}
         </div>
+        )}
+
+        {intakeNotice && (
+          <div className="flex items-start justify-between gap-3 rounded-md border border-[#0F766E]/30 bg-[#F0FDFA] px-4 py-2.5 text-[13px] text-[#0F766E]">
+            <span>
+              {isZh
+                ? `已收到「${intakeNotice}」，正在本機遮蔽。要上雲前會先請你確認。`
+                : `Received "${intakeNotice}". It is being masked on this device; nothing goes to the cloud until you ask.`}
+            </span>
+            <button type="button" onClick={() => setIntakeNotice(null)} aria-label={isZh ? '關閉' : 'Dismiss'}>
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         )}
 
         {(state.stage === 'scanning_pii' || state.stage === 'translating' || state.stage === 'running_parallel') && (
