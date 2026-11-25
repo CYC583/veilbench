@@ -35,3 +35,29 @@ test('Try to leak closes the outbound gate before any cloud call', async ({ page
   await expect(page.getByRole('button', { name: /Stage 4 · Cross-Doc/ })).toBeDisabled();
   expect(await page.evaluate(() => window.__vbCalls.filter(call => !call.local))).toEqual([]);
 });
+
+test('guided demo finishes with a cross-document decision', async ({ page }) => {
+  await page.getByTestId('hero-run-demo').click();
+  const card = page.getByTestId('decision-card');
+  await expect(card).toContainText('Cross-document audit', { timeout: 30_000 });
+  await expect(page.getByTestId('decision-verdict')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Guided demo', exact: true })).toBeVisible();
+});
+
+test('same-window extension intake adds a document and masks the selected text', async ({ page }) => {
+  await expect(page.getByTestId('hero-run-demo')).toBeVisible();
+  await page.evaluate(() => {
+    window.postMessage({
+      type: 'veilbench.intake.v1',
+      title: 'Selected order',
+      text: 'Service deposit: $9,150 for the initial review.',
+    }, window.location.origin);
+  });
+  await expect(page.getByText(/Received "Selected order\.txt"/)).toBeVisible();
+  await page.getByRole('button', { name: /Inspect Payload & Proof/ }).click();
+  const inspector = page.getByRole('dialog');
+  await expect(inspector).toContainText('initial review');
+  await expect(inspector).toContainText(/\[MONEY_AMOUNT_\d+\]/);
+  await expect(inspector).not.toContainText('$9,150');
+  expect(await page.evaluate(() => window.__vbCalls.filter(call => !call.local))).toEqual([]);
+});
