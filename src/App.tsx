@@ -11,28 +11,33 @@ import { PayloadInspectorModal } from './components/PayloadInspectorModal';
 import { AuditWorkbench } from './components/AuditWorkbench';
 import { XRayTelemetryBar } from './components/XRayTelemetryBar';
 import { SessionHistoryDrawer } from './components/SessionHistoryDrawer';
+import { DecisionCard } from './components/DecisionCard';
+import { HeroIntro } from './components/HeroIntro';
 
-/** D-6 guided demo: each step starts only after the previous stage has really finished (stage idle). */
+/** Guided demo: each step starts only after the previous stage has really finished (stage idle). */
 const GUIDED_STEPS: Array<{ en: string; zh: string }> = [
   { en: 'Loading the Contract + Quote sample…', zh: '載入合約＋報價單範例…' },
   {
-    en: 'Stage 1 · On-device airlock tokenized names, amounts, dates and IDs — in the text and burned into the image pixels.',
-    zh: 'Stage 1 · 裝置端氣閘已把姓名、金額、日期、證號換成代號，文字與圖片像素都已處理。',
+    en: 'Stage 1 · On-device: names, amounts, dates and IDs became tokens, in the text and in the image pixels.',
+    zh: 'Stage 1 · 裝置端：姓名、金額、日期、證號都已換成代號，文字與圖片像素都處理了。',
   },
   {
     en: 'Stage 3 · Layer 3 + SHA-256: this is byte-for-byte what may leave the device.',
     zh: 'Stage 3 · Layer 3 + SHA-256：這就是唯一可能離開裝置的內容。',
   },
   {
-    en: 'Stage 2 · Rapid triage — Gemini Nano when available, otherwise the sanitized cloud fallback.',
-    zh: 'Stage 2 · 快速風險篩檢：有 Gemini Nano 就在裝置端，否則以脫敏內容走雲端備援。',
+    en: 'Stages 2 + 4 in parallel · on-device first verdict and cloud deep audit start together; the cloud sees tokens and relations only.',
+    zh: 'Stage 2 + 4 並行：裝置端初判與雲端深度稽核同時開跑，雲端只看代號與關係。',
   },
   {
-    en: 'Stage 4 · Cloud Gemini reasons over tokens and relations; your browser restores names and computes the $ difference.',
-    zh: 'Stage 4 · 雲端只看代號與關係推理，瀏覽器在本機還原姓名並計算金額差。',
+    en: 'Done · your device computed the exact gap and wrote the decision.',
+    zh: '完成：你的裝置算出確切差額，並給出簽約決定。',
   },
-  { en: 'Guided demo complete.', zh: '導覽完成。' },
 ];
+
+function scrollToTestId(id: string) {
+  document.querySelector(`[data-testid="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 export function App() {
   const { state, combinedSanitizedPayload, actions } = useWorkbenchStore();
@@ -55,20 +60,18 @@ export function App() {
           case 2:
             actions.setIsInspectorOpen(false);
             setDemoStep(3);
-            void actions.executeRapidTriage();
+            void actions.executeParallelHybrid();
+            window.setTimeout(() => scrollToTestId('decision-card'), 300);
             break;
           case 3:
             setDemoStep(4);
-            void actions.executeDeepAudit();
-            break;
-          case 4:
-            setDemoStep(5);
+            scrollToTestId('decision-card');
             break;
           default:
             setDemoStep(null);
         }
       },
-      demoStep === 0 ? 0 : 2800
+      demoStep === 0 ? 0 : demoStep === 4 ? 6000 : 2200
     );
     return () => window.clearTimeout(timer);
   }, [actions, demoStep, state.stage]);
@@ -123,6 +126,14 @@ export function App() {
       )}
 
       <main className="mx-auto max-w-[1440px] space-y-6 px-4 py-6 sm:px-6">
+        {state.documents.length === 0 && demoStep === null ? (
+          <HeroIntro
+            locale={state.locale}
+            disabled={isBusy}
+            onRunDemo={() => setDemoStep(0)}
+            onTryOwn={() => document.getElementById('intake')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          />
+        ) : (
         <div
           className={`flex flex-wrap items-center justify-between gap-2 rounded-md border px-4 py-2.5 ${
             demoStep !== null ? 'border-[#0F766E] bg-[#F0FDFA]' : 'border-[#E2E5EA] bg-[#FFFFFF]'
@@ -135,8 +146,8 @@ export function App() {
                 ? GUIDED_STEPS[demoStep].zh
                 : GUIDED_STEPS[demoStep].en
               : isZh
-                ? '第一次使用？30 秒導覽會依序跑完 Stage 1 → 4。'
-                : 'New here? The 30-second guided demo runs Stage 1 → 4 for you.'}
+                ? '想再看一次？30 秒導覽會從載入範例一路跑到簽約決定。'
+                : 'Want the walkthrough? The 30-second guided demo runs from sample to decision.'}
           </p>
           {demoStep === null ? (
             <button
@@ -162,14 +173,16 @@ export function App() {
             </button>
           )}
         </div>
+        )}
 
-        {(state.stage === 'scanning_pii' || state.stage === 'translating') && (
+        {(state.stage === 'scanning_pii' || state.stage === 'translating' || state.stage === 'running_parallel') && (
           <div className="flex items-center gap-2.5 rounded-md border border-[#0F766E]/30 bg-[#F0FDFA] px-4 py-2.5 font-mono text-[12px] text-[#0F766E]">
             <span className="h-2 w-2 animate-pulse rounded-full bg-[#0F766E]" />
             <span>{localizeRuntimeMessage(state.stageMessage, state.locale)}</span>
           </div>
         )}
 
+        <div id="intake" className="scroll-mt-4">
         <DocumentIntake
           documents={state.documents}
           activeDocId={state.activeDocId}
@@ -180,6 +193,7 @@ export function App() {
           onAddDocument={(params) => void actions.addCustomDocument(params)}
           onRemoveDocument={(docId) => void actions.removeDocument(docId)}
         />
+        </div>
 
         {state.documents.length > 0 && (
           <PipelineStepper
@@ -189,11 +203,27 @@ export function App() {
             }
             nanoAvailable={state.nanoStatus === 'available'}
             triageSource={state.triage?.inferenceSource ?? null}
-            triageRunning={state.stage === 'running_triage'}
+            triageRunning={state.triageRunning}
             gatePassed={state.preFlight ? state.preFlight.passed : null}
             deepSource={state.deepAudit?.inferenceSource ?? null}
-            deepRunning={state.stage === 'running_deep_audit'}
+            deepRunning={state.deepRunning}
             deepFailed={state.cloudFailure?.action === 'deep_audit'}
+          />
+        )}
+
+        {state.documents.length > 0 && (
+          <DecisionCard
+            card={state.decisionCard}
+            triage={state.triage}
+            deepAudit={state.deepAudit}
+            parallelRun={state.parallelRun}
+            triageRunning={state.triageRunning}
+            deepRunning={state.deepRunning}
+            isBusy={isBusy}
+            locale={state.locale}
+            rehydrateLocal={actions.rehydrateLocal}
+            onRunDecision={() => void actions.executeParallelHybrid()}
+            onVerify={() => actions.setIsInspectorOpen(true)}
           />
         )}
 
@@ -237,6 +267,8 @@ export function App() {
           hasDocuments={state.documents.length > 0}
           onRetryCloud={actions.retryCloudAction}
           onDismissCloudFailure={actions.dismissCloudFailure}
+          triageRunning={state.triageRunning}
+          deepRunning={state.deepRunning}
         />
       </main>
 
