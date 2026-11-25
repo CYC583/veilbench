@@ -86,3 +86,35 @@ describe('runWithCloudResilience', () => {
     expect(cloudModelChain('m1', ['m2', 'm1', ' m3 ', 'm2'])).toEqual(['m1', 'm2', 'm3']);
   });
 });
+
+describe('caller cancellation', () => {
+  it('skips every model if cancelled before dispatch', async () => {
+    const run = vi.fn(async () => 'unexpected');
+    await expect(runWithCloudResilience(['a', 'b'], run, { signal: AbortSignal.abort() }))
+      .rejects.toMatchObject({ kind: 'aborted', attempts: [] });
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('settles during a pending request and never runs the fallback', async () => {
+    const controller = new AbortController();
+    const run = vi.fn(() => new Promise<string>(() => {}));
+    const result = runWithCloudResilience(['a', 'b'], run, { signal: controller.signal });
+    controller.abort();
+    await expect(result).rejects.toMatchObject({ kind: 'aborted', attempts: [{ kind: 'aborted', model: 'a' }] });
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels during backoff without waiting or announcing another attempt', async () => {
+    const controller = new AbortController();
+    const run = vi.fn(async () => { throw httpError(500); });
+    const onRetry = vi.fn();
+    const sleep = () => {
+      controller.abort();
+      return new Promise<void>(() => {});
+    };
+    await expect(runWithCloudResilience(['a', 'b'], run, { signal: controller.signal, sleep, onRetry }))
+      .rejects.toMatchObject({ kind: 'aborted', attempts: [{ kind: 'overloaded' }] });
+    expect(onRetry).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+});

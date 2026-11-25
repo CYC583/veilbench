@@ -14,6 +14,7 @@ import {
   CloudInferenceError,
   cloudModelChain,
   runWithCloudResilience,
+  withInferenceSignal,
 } from '../core/cloudResilience';
 import type {
   ActualInferenceSource,
@@ -213,6 +214,7 @@ async function callWithResilience<T>(
     task: HybridTaskType;
     inputChars: number;
     started: number;
+    signal?: AbortSignal;
     onRetryNotice?: (message: string) => void;
     /** Override same-model retries (Stage 4 fails over to the next model immediately). */
     retriesPerModel?: number;
@@ -228,6 +230,7 @@ async function callWithResilience<T>(
       ]);
   try {
     const { value, model } = await runWithCloudResilience(models, run, {
+      signal: ctx.signal,
       retriesPerModel: onDeviceOnly ? 0 : (ctx.retriesPerModel ?? 1),
       onRetry: ({ model: nextModel, attempt, previous }) =>
         ctx.onRetryNotice?.(
@@ -236,7 +239,7 @@ async function callWithResilience<T>(
     });
     return { value, modelUsed: model };
   } catch (err) {
-    if (!(err instanceof CloudInferenceError)) throw err;
+    if (!(err instanceof CloudInferenceError) || err.kind === 'aborted') throw err;
     // Log only the classified attempts; the raw SDK message embeds endpoint and project identifiers.
     console.warn('[VeilBench] Cloud inference failed after resilience policy:', err.attempts);
     const last = err.attempts[err.attempts.length - 1];
@@ -428,6 +431,7 @@ export async function runOnDevicePiiScan(params: {
  * Stage 2: Rapid Offline-Ready Triage via Firebase AI Logic (PREFER_ON_DEVICE or ONLY_ON_DEVICE).
  */
 export async function runRapidTriage(params: {
+  signal?: AbortSignal;
   sanitizedText: string;
   mode: HybridInferenceMode;
   remoteConfig: RemoteHybridConfig;
@@ -459,6 +463,7 @@ export async function runRapidTriage(params: {
         task: 'rapid_triage',
         inputChars: params.sanitizedText.length,
         started,
+        signal: params.signal,
         onRetryNotice: params.onRetryNotice,
       },
       async (modelName) => {
@@ -472,12 +477,12 @@ export async function runRapidTriage(params: {
             },
             // Same contract on-device: Nano is schema-constrained, so Stage 2 JSON parses without repair.
             onDeviceParams: {
-              createOptions: { expectedOutputs: [{ type: 'text', languages: ['en'] }] },
+              createOptions: { signal: params.signal, expectedOutputs: [{ type: 'text', languages: ['en'] }] },
               promptOptions: { responseConstraint: TRIAGE_JSON_SCHEMA },
             },
           },
           CLOUD_REQUEST_OPTIONS
-        ).generateContent(prompt);
+        ).generateContent(prompt, { signal: params.signal });
         const json = safeJsonParse<Omit<TriageResult, 'inferenceSource' | 'generatedAt'>>(
           res.response.text()
         );
@@ -533,6 +538,7 @@ export type DeepAuditPart = 'analysis' | 'playbook';
 class SkippedPart extends Error {}
 
 export async function runDeepRedlineAudit(params: {
+  signal?: AbortSignal;
   documents: WorkbenchDocument[];
   mode: HybridInferenceMode;
   remoteConfig: RemoteHybridConfig;
@@ -581,6 +587,7 @@ export async function runDeepRedlineAudit(params: {
         task,
         inputChars: text.length,
         started,
+        signal: params.signal,
         onRetryNotice: (msg) => params.onRetryNotice?.(`[${part}] ${msg}`),
         // Measured: a 500 on the primary rarely clears within seconds, but the fallback model usually
         // answers — so fail over immediately instead of re-queueing a long generation on the same model.
@@ -591,6 +598,7 @@ export async function runDeepRedlineAudit(params: {
           ai,
           {
             mode: toSdkInferenceMode(params.mode),
+            onDeviceParams: { createOptions: { signal: params.signal } },
             inCloudParams: {
               model: modelName,
               generationConfig: {
@@ -602,7 +610,7 @@ export async function runDeepRedlineAudit(params: {
             },
           },
           STAGE4_REQUEST_OPTIONS
-        ).generateContent(withImages ? [text, ...imageParts] : [text]);
+        ).generateContent(withImages ? [text, ...imageParts] : [text], { signal: params.signal });
         const parsed = safeJsonParse<T>(result.response.text());
         // Never invent a placeholder result: a malformed answer is a failed call.
         if (!parsed) throw new Error(`Cloud Gemini returned malformed JSON for Stage 4 ${part}.`);
@@ -652,6 +660,7 @@ export async function runDeepRedlineAudit(params: {
   const aErr = failureOf(analysis);
   const bErr = failureOf(playbook);
 
+  if (params.signal?.aborted) throw new CloudInferenceError('aborted', []);
   if (aErr && bErr) {
     if (aErr instanceof CloudStageError) {
       throw new CloudStageError(
@@ -700,6 +709,7 @@ export async function runDeepRedlineAudit(params: {
  * with strictly sanitized context only.
  */
 export async function runNegotiationChatTurn(params: {
+  signal?: AbortSignal;
   sanitizedContext: string;
   history: ChatTurn[];
   sanitizedUserQuestion: string;
@@ -744,16 +754,21 @@ export async function runNegotiationChatTurn(params: {
         task: 'negotiation_chat',
         inputChars: prompt.length,
         started,
+        signal: params.signal,
         onRetryNotice: params.onRetryNotice,
       },
       async (modelName) => {
         const streamResult = await getGenerativeModel(
           ai,
-          { mode: toSdkInferenceMode(params.mode), inCloudParams: { model: modelName } },
+          { mode: toSdkInferenceMode(params.mode), inCloudParams: { model: modelName },
+            onDeviceParams: { createOptions: { signal: params.signal } } },
           CLOUD_REQUEST_OPTIONS
-        ).generateContentStream(prompt);
+        ).generateContentStream(prompt, { signal: params.signal });
+        // The SDK aggregates a second promise which can reject alongside the iterator on abort.
+        void streamResult.response.catch(() => undefined);
         let text = '';
         for await (const chunk of streamResult.stream) {
+          params.signal?.throwIfAborted();
           const textPart = chunk.text();
           if (textPart) {
             text += textPart;
@@ -795,6 +810,7 @@ export async function runNegotiationChatTurn(params: {
  * Preserves semantic meaning and placeholder tokens without leaking data when running locally on Gemini Nano.
  */
 export async function translateTextToZhTw(params: {
+  signal?: AbortSignal;
   englishText: string;
   remoteConfig: RemoteHybridConfig;
 }): Promise<{ translatedText: string; actualSource: ActualInferenceSource; telemetry: TelemetryEvent }> {
@@ -808,6 +824,7 @@ export async function translateTextToZhTw(params: {
 
   const model = getGenerativeModel(ai, {
     mode: InferenceMode.PREFER_ON_DEVICE,
+    onDeviceParams: { createOptions: { signal: params.signal } },
     inCloudParams: { model: params.remoteConfig.cloudModelName },
   });
 
@@ -819,7 +836,7 @@ export async function translateTextToZhTw(params: {
   ].join('\n');
 
   try {
-    const result = await model.generateContent(prompt);
+    const result = await withInferenceSignal(params.signal, () => model.generateContent(prompt, { signal: params.signal }));
     const actualSource = mapActualSource(result.response.inferenceSource);
 
     perfTrace?.putAttribute('inference_source', actualSource);

@@ -5,6 +5,7 @@
  */
 
 export type CloudFailureKind =
+  | 'aborted'
   | 'overloaded'
   | 'rate_limited'
   | 'quota'
@@ -76,6 +77,8 @@ export function describeCloudFailure(kind: CloudFailureKind, attempts: CloudAtte
   const models = new Set(attempts.map(a => a.model)).size;
   const tried = `${attempts.length} attempt${attempts.length === 1 ? '' : 's'} across ${models} model${models === 1 ? '' : 's'}`;
   switch (kind) {
+    case 'aborted':
+      return 'Inference was cancelled.';
     case 'overloaded':
     case 'rate_limited':
     case 'timeout':
@@ -107,7 +110,27 @@ export class CloudInferenceError extends Error {
   }
 }
 
+/** Some SDK operations (notably device availability) can still be pending after cancellation. */
+export async function withInferenceSignal<T>(
+  signal: AbortSignal | undefined,
+  start: () => Promise<T>,
+): Promise<T> {
+  if (!signal) return start();
+  if (signal.aborted) throw new CloudInferenceError('aborted', []);
+  let onAbort!: () => void;
+  const aborted = new Promise<never>((_, reject) => {
+    onAbort = () => reject(new CloudInferenceError('aborted', []));
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([start(), aborted]);
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+  }
+}
+
 export interface CloudResilienceOptions {
+  signal?: AbortSignal;
   retriesPerModel?: number;
   baseDelayMs?: number;
   sleep?: (ms: number) => Promise<void>;
@@ -129,16 +152,28 @@ export async function runWithCloudResilience<T>(
   for (let m = 0; m < models.length; m++) {
     const model = models[m];
     for (let attempt = 1; attempt <= retriesPerModel + 1; attempt++) {
+      if (options.signal?.aborted) throw new CloudInferenceError('aborted', attempts);
       try {
-        return { value: await run(model), model, attempts };
+        const value = await withInferenceSignal(options.signal, () => run(model));
+        if (options.signal?.aborted) throw new CloudInferenceError('aborted', attempts);
+        return { value, model, attempts };
       } catch (err) {
+        if (options.signal?.aborted) {
+          throw new CloudInferenceError('aborted', [...attempts, { model, attempt, kind: 'aborted' }]);
+        }
         const classified = classifyAiError(err);
         const record: CloudAttempt = { model, attempt, kind: classified.kind, status: classified.status };
         attempts.push(record);
         lastKind = classified.kind;
         const canRetrySame = classified.retrySameModel && attempt <= retriesPerModel;
         if (canRetrySame) {
-          await sleep(baseDelayMs * 2 ** (attempt - 1));
+          try {
+            await withInferenceSignal(options.signal, () => sleep(baseDelayMs * 2 ** (attempt - 1)));
+          } catch (sleepError) {
+            if (options.signal?.aborted) throw new CloudInferenceError('aborted', attempts);
+            throw sleepError;
+          }
+          if (options.signal?.aborted) throw new CloudInferenceError('aborted', attempts);
           onRetry?.({ model, attempt: attempt + 1, previous: record });
           continue;
         }
