@@ -77,7 +77,7 @@ Multi-page PDF extraction on-device, organization policy packs through Remote Co
 
 ## Built during the submission period
 
-The public repository history starts on 2026-11-26; earlier work was done in a local workspace and landed as the first public commit, and later changes are committed as they are made. AI coding assistants (Google Antigravity, OpenAI Codex, Anthropic Claude) were used during development. All runtime AI inference goes through Firebase AI Logic. The Firebase project ID (`petmemo-*`) is a reused, previously unrelated project; no code from it is in this repository.
+Development started on 2026-11-25, inside the submission period (opened 2026-11-11). The first push to GitHub was on 2026-11-26, and every change since is committed as it is made. AI coding assistants (Google Antigravity, OpenAI Codex, Anthropic Claude) were used during development. All runtime AI inference goes through Firebase AI Logic. The Firebase project ID (`petmemo-*`) is a reused, previously unrelated project; no code from it is in this repository.
 
 ## Testing instructions
 

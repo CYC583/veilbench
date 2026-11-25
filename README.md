@@ -134,7 +134,7 @@ tests/              # Vitest unit tests and Firestore rules tests
 
 ## Built during the submission period
 
-The public history starts on 2026-11-26; earlier work was done in a local workspace and landed as the first public commit. Since then every change is committed as it is made, so the history shows the real order of work (decision card, parallel hybrid, egress ledger, iOS app, security fixes). AI coding assistants (Google Antigravity, OpenAI Codex, Anthropic Claude) were used for development; runtime inference uses Firebase AI Logic only.
+Development started on **2026-11-25**, inside the submission period (which opened on 2026-11-11). The first push to GitHub was on 2026-11-26, and every change since is committed as it is made, so the history shows the real order of work (decision card, parallel hybrid, egress ledger, iOS app, security fixes). AI coding assistants (Google Antigravity, OpenAI Codex, Anthropic Claude) were used for development; runtime inference uses Firebase AI Logic only.
 
 ## License
 
