@@ -203,11 +203,14 @@ enum PIIShield {
   static func sanitizeOnDeviceCandidates(_ candidates: [PIICandidate], in text: String) -> [PIICandidate] {
     var seen = Set<String>()
     return candidates.compactMap { c in
-      let value = c.value.trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ".,;:\"'()")))
-      let key = value.lowercased()
-      guard value.count >= 2, value.count <= 120, !value.contains("["), !genericTerms.contains(key),
+      let trimmed = c.value.trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ".,;:\"'()")))
+      let key = trimmed.lowercased()
+      guard trimmed.count >= 2, trimmed.count <= 120, !trimmed.contains("["), !genericTerms.contains(key),
             !seen.contains(key),
-            text.range(of: value, options: [.caseInsensitive]) != nil else { return nil }
+            let found = text.range(of: trimmed, options: [.caseInsensitive]) else { return nil }
+      // Keep the exact text as written in the document, so `locate` (literal for short values) always finds
+      // it. Otherwise a case-mismatched short value ("ada" vs "Ada") would pass here yet never be vaulted.
+      let value = String(text[found])
       // Structured formats (IBAN, routing, email, phone, money, dates, IDs) are owned by the deterministic
       // rules, which assign the precise role; the model sometimes mislabels them (e.g. IBAN as ADDRESS).
       if scanDeterministic(value).contains(where: { $0.role != .address }) { return nil }

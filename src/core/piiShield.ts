@@ -198,9 +198,17 @@ export function runLocalAirlock(params: {
       candidates.set(entry.originalValue, { value: entry.originalValue, role: entry.role, layer: 'deterministic_regex' });
     }
   }
+  const loweredRaw = rawText.toLowerCase();
   for (const candidate of nanoCandidates) {
-    const value = candidate.value.trim();
-    if (value.length >= 2) candidates.set(value, { ...candidate, value, layer: 'gemini_nano' });
+    const trimmed = candidate.value.trim();
+    if (trimmed.length < 2) continue;
+    // Use the exact text as written in the document: `locate` is literal for short values, so a
+    // case-mismatched Nano value ("ada" for "Ada") would otherwise never be vaulted.
+    const at = loweredRaw.indexOf(trimmed.toLowerCase());
+    const value = at >= 0 && trimmed.toLowerCase().length === trimmed.length
+      ? rawText.slice(at, at + trimmed.length)
+      : trimmed;
+    candidates.set(value, { ...candidate, value, layer: 'gemini_nano' });
   }
   for (const candidate of scanDeterministicPii(rawText)) {
     const prior = candidates.get(candidate.value);

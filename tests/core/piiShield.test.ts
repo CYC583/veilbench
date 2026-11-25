@@ -104,6 +104,12 @@ describe('local vault and selective redaction', () => {
     expect(result.sanitizedText).toBe('[PERSON_NAME_1] and [PERSON_NAME_2]');
     expect(rehydrateText(result.sanitizedText, result.vault)).toBe(rawText);
   });
+  it('vaults a short Nano value even when the model changed its casing', () => {
+    const rawText = 'Paid to Ada by wire.';
+    const result = runLocalAirlock({ rawText, documentId: 'A', nanoCandidates: [name('ada')] });
+    expect(result.sanitizedText).toBe('Paid to [PERSON_NAME_1] by wire.');
+    expect(rehydrateText(result.sanitizedText, result.vault)).toBe(rawText);
+  });
   it('returns independent empty vaults and zero counts for empty input', () => {
     const a = createEmptyVault();
     a.roleCounters.EMAIL = 5;
