@@ -344,6 +344,7 @@ export function App() {
         isOpen={state.isHistoryOpen}
         onClose={() => actions.setIsHistoryOpen(false)}
         onSelectSession={actions.restoreSessionFromHistory}
+        onDeleteSessions={(ids) => void actions.deleteSessions(ids)}
         sessions={state.savedSessions}
         locale={state.locale}
       />

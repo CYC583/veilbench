@@ -36,6 +36,7 @@ const RULES: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
   [/^Original value for (\[[A-Z_]+_\d+\]) remains in payload\.$/, m => `${m[1]} 的原始值仍留在內容中。`],
   [/^Raw ([A-Z_]+) pattern remains in payload\.$/, m => `內容中仍有未脫敏的 ${m[1]} 格式資料。`],
   [/^Unredacted ([A-Z_]+) remains in payload\.$/, m => `內容中仍有未脫敏的 ${m[1]}。`],
+  [/^Could not delete (\d+) saved session\(s\)\. .*$/, m => `有 ${m[1]} 筆紀錄刪除失敗，請檢查網路後再試。`],
   [/^Uploaded image "(.+)" has not been reviewed after pixel redaction\.$/, m => `上傳的圖片「${m[1]}」在像素塗黑後尚未經過人工確認。`],
 ];
 

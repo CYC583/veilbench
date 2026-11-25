@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteDoc,
   doc,
   getDocs,
   limit,
@@ -85,5 +86,22 @@ export async function listSanitizedSessions(): Promise<SanitizedFirestoreSession
     } catch {
       return [];
     }
+  }
+}
+
+/**
+ * Deletes one of the signed-in user's sessions. Like setDoc, deleteDoc applies to the local cache at once
+ * and its Promise resolves on server acknowledgement, so the caller gets the server outcome separately.
+ * firestore.rules only allow deleting your own documents.
+ */
+export async function deleteSanitizedSession(id: string): Promise<FirestoreSyncState> {
+  const { db } = getFirebaseServices();
+  const user = await ensureAnonymousUser();
+  if (!db || !user) return 'local_only';
+  try {
+    await deleteDoc(doc(db, COLLECTION_NAME, id));
+    return 'synced';
+  } catch {
+    return 'failed';
   }
 }

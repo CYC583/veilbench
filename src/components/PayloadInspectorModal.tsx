@@ -6,7 +6,8 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react';
-import { useState, useSyncExternalStore } from 'react';
+import { useRef, useState, useSyncExternalStore } from 'react';
+import { useDialogA11y } from './useDialogA11y';
 import { getEgressEntries, subscribeEgress, type EgressEntry } from '../services/egressLedger';
 import type { PreFlightAssertion, VaultMap, ZeroLeakProof } from '../types/privacy';
 import type { SupportedLocale, WorkbenchDocument } from '../types/audit';
@@ -45,6 +46,8 @@ export function PayloadInspectorModal({
   // Hooks must run before the early return below.
   const [copiedPayload, setCopiedPayload] = useState(false);
   const ledger = useSyncExternalStore(subscribeEgress, getEgressEntries, getEgressEntries);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  useDialogA11y(dialogRef, isOpen, onClose);
   if (!isOpen) return null;
 
   const isZh = locale === 'zh-TW';
@@ -58,7 +61,11 @@ export function PayloadInspectorModal({
       aria-modal="true"
       aria-label={isZh ? '即時送出封包檢視器' : 'Live Outbound Payload Inspector'}
     >
-      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-[#E2E5EA] bg-[#FFFFFF]">
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-[#E2E5EA] bg-[#FFFFFF] outline-none"
+      >
         <div className="flex items-center justify-between border-b border-[#E2E5EA] px-5 py-4">
           <div className="flex items-center gap-2.5">
             <Fingerprint className="h-5 w-5 text-[#0F766E]" />

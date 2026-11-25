@@ -65,6 +65,7 @@ import {
   CloudStageError,
 } from '../services/aiLogicService';
 import {
+  deleteSanitizedSession,
   listSanitizedSessions,
   saveSanitizedSession,
   type FirestoreSyncState,
@@ -773,15 +774,23 @@ export function useWorkbenchStore() {
       const nextEntitiesByDoc: Record<string, PiiEntity[]> = { ...entitiesByDoc };
       const nextDocs: WorkbenchDocument[] = [];
       for (const d of documents) {
-        const disabled = new Set((entitiesByDoc[d.id] ?? []).filter((e) => !e.enabled).map((e) => e.originalValue));
+        const previous = entitiesByDoc[d.id] ?? [];
+        const disabled = new Set(previous.filter((e) => !e.enabled).map((e) => e.originalValue));
         const airlock = runLocalAirlock({
           documentId: d.id,
           rawText: d.rawText,
           existingVault: workingVault,
+          // Re-feed earlier findings with their image boxes so no pixel-burn region is lost on recompute.
+          nanoCandidates: previous
+            .filter((e) => e.bbox)
+            .map((e) => ({ value: e.originalValue, role: e.role, bbox: e.bbox })),
           manualCandidates: [{ value, role }],
         });
         workingVault = airlock.vault;
-        const entities = airlock.entities.map((e) => (disabled.has(e.originalValue) ? { ...e, enabled: false } : e));
+        const recomputed = airlock.entities.map((e) => (disabled.has(e.originalValue) ? { ...e, enabled: false } : e));
+        // Fail closed: any earlier entity (e.g. image-only) missing from the recompute is kept as it was.
+        const kept = previous.filter((p) => !recomputed.some((e) => e.originalValue === p.originalValue));
+        const entities = [...recomputed, ...kept];
         nextEntitiesByDoc[d.id] = entities;
         nextDocs.push({
           ...d,
@@ -1267,6 +1276,23 @@ export function useWorkbenchStore() {
     setIsHistoryOpen(false);
   }, []);
 
+  /**
+   * Deletes saved Zero-PII sessions (one, or all when ids is omitted). The list updates at once; if the
+   * server rejects a delete, that session is put back and the error is shown.
+   */
+  const deleteSessions = useCallback(async (ids?: string[]) => {
+    const targets = savedSessions.filter((s) => !ids || ids.includes(s.id));
+    if (targets.length === 0) return;
+    setSavedSessions((prev) => prev.filter((s) => !targets.some((t) => t.id === s.id)));
+    const results = await Promise.all(targets.map((t) => deleteSanitizedSession(t.id)));
+    const failed = targets.filter((_, i) => results[i] === 'failed');
+    if (failed.length) {
+      setSavedSessions((prev) => [...failed, ...prev].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+      setErrorBanner(`Could not delete ${failed.length} saved session(s). Check your connection and try again.`);
+    }
+    logHybridAnalyticsEvent('sessions_deleted', { count: targets.length - failed.length, failed: failed.length });
+  }, [savedSessions]);
+
   const clearWorkspace = useCallback(() => {
     setCloudFailure(null);
     setActiveSamplePackId(null);
@@ -1397,6 +1423,7 @@ export function useWorkbenchStore() {
       toggleLocaleWithAiTranslation,
       restoreSessionFromHistory,
       clearWorkspace,
+      deleteSessions,
       rehydrateLocal,
     },
   };
