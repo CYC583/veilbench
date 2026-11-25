@@ -85,3 +85,15 @@ test('an intake message without the extension receipt is ignored', async ({ page
   await expect(page.getByText(/Received "Forged\.txt"/)).toHaveCount(0);
   await expect(page.getByTestId('hero-run-demo')).toBeVisible();
 });
+
+test('a relay link fragment is stripped before any request and never leaves the page', async ({ page, context }) => {
+  const id = '0123456789abcdef0123456789abcdef';
+  const seen = [];
+  context.on('request', request => seen.push(request.url()));
+  await page.goto('/#relay=' + id);
+  await expect(page.getByTestId('relay-panel')).toBeVisible();
+  expect(page.url()).not.toContain('relay=');
+  expect(await page.evaluate(() => window.location.hash)).toBe('');
+  expect(seen.filter(url => url.includes(id))).toEqual([]);
+  await expect(page.locator('#relay-link')).toHaveValue('');
+});

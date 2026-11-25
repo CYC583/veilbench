@@ -1,89 +1,67 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Copy, Smartphone } from 'lucide-react';
 import type { SupportedLocale } from '../types/audit';
-import {
-  parseRelayCode,
-  readRelayAudit,
-  requestRelayAccess,
-  type RelayAudit,
-} from '../services/sessionStore';
+import { readRelayAudit, type RelayAudit, type RelayReadResult } from '../services/sessionStore';
+import { onRelayLink, parseRelayId, takeCapturedRelayId } from '../integrations/relayLink';
 
 const dot = { high: 'bg-[#BE123C]', medium: 'bg-[#B45309]', low: 'bg-[#5C626E]' } as const;
-const POLL_MS = 2500;
-const WAIT_LIMIT_MS = 10 * 60 * 1000;
 
-type Problem = 'invalid_code' | 'not_found' | 'offline' | 'error' | 'timeout';
-const MESSAGES: Record<Problem, { en: string; zh: string }> = {
-  invalid_code: { en: 'Enter the 6-digit code shown on your iPhone.', zh: '請輸入 iPhone 上顯示的 6 位數代碼。' },
-  not_found: { en: 'No audit for that code, or it has expired.', zh: '找不到這個代碼的稽核結果，或已過期。' },
+const MESSAGES: Record<Exclude<RelayReadResult['status'], 'ok'>, { en: string; zh: string }> = {
+  invalid_link: { en: 'Paste the link shared from VeilBench Pocket on your iPhone.', zh: '請貼上 iPhone 上 VeilBench Pocket 分享的連結。' },
+  not_found: { en: 'No audit for that link, or it has expired.', zh: '找不到這個連結的稽核結果，或已過期。' },
   offline: { en: 'You are offline. Reconnect and try again.', zh: '目前離線，請連線後再試。' },
   error: { en: 'Could not open that audit. Try again.', zh: '無法開啟這份稽核，請再試一次。' },
-  timeout: { en: 'Still not approved on the iPhone. Start again when you are ready.', zh: 'iPhone 還沒核准。準備好後請重新開始。' },
 };
 
 /**
  * Cross-device handoff from VeilBench Pocket (iOS). The phone masks with Apple's on-device model, audits
- * the tokens in the cloud and leaves the token-only result under a 6-digit code. This browser asks for
- * access with its own confirmation number; the user types that number on the phone, which approves this
- * one browser (firestore.rules enforce it). The vault never leaves the phone, so only tokens appear here.
+ * the tokens in the cloud, and shares a link whose fragment carries an unguessable 128-bit ID (it never
+ * reaches a server; main.tsx strips it from the URL before any SDK loads). The vault never leaves the
+ * phone, so this page shows tokens, never the real names or numbers.
  */
 export function RelayOpener({ locale }: { locale: SupportedLocale }) {
   const isZh = locale === 'zh-TW';
   const [open, setOpen] = useState(false);
-  const [code, setCode] = useState('');
+  const [link, setLink] = useState('');
   const [busy, setBusy] = useState(false);
-  const [challenge, setChallenge] = useState<string | null>(null);
   const [audit, setAudit] = useState<RelayAudit | null>(null);
-  const [problem, setProblem] = useState<Problem | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const pollRef = useRef<number | null>(null);
 
-  const stopPolling = () => {
-    if (pollRef.current !== null) window.clearTimeout(pollRef.current);
-    pollRef.current = null;
-  };
-  useEffect(() => stopPolling, []);
-
-  const reset = () => {
-    stopPolling();
-    setChallenge(null);
-    setAudit(null);
-    setProblem(null);
-    setBusy(false);
-  };
-
-  const waitForApproval = (relayCode: string, startedAt: number, delay = POLL_MS) => {
-    pollRef.current = window.setTimeout(async () => {
-      const result = await readRelayAudit(relayCode);
-      if (result.status === 'ok') {
-        setAudit(result.audit);
-        setChallenge(null);
-        setBusy(false);
-        pollRef.current = null;
-      } else if (result.status === 'waiting' && Date.now() - startedAt < WAIT_LIMIT_MS) {
-        waitForApproval(relayCode, startedAt);
-      } else {
-        setProblem(result.status === 'waiting' ? 'timeout' : result.status);
-        setChallenge(null);
-        setBusy(false);
-        pollRef.current = null;
-      }
-    }, delay);
-  };
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    reset();
+  const openRelay = async (id: string) => {
     setBusy(true);
-    const relayCode = parseRelayCode(code);
-    const result = await requestRelayAccess(code);
-    if (result.status !== 'requested' || !relayCode) {
-      setProblem(result.status === 'requested' ? 'invalid_code' : result.status);
-      setBusy(false);
+    setError(null);
+    setAudit(null);
+    const result = await readRelayAudit(id);
+    setBusy(false);
+    if (result.status === 'ok') setAudit(result.audit);
+    else setError(isZh ? MESSAGES[result.status].zh : MESSAGES[result.status].en);
+  };
+
+  // Opened from a shared link: main.tsx already captured the ID and cleaned the address bar.
+  useEffect(() => {
+    const show = (id: string | null) => {
+      setOpen(true);
+      if (id) void openRelay(id);
+      else setError(isZh ? MESSAGES.invalid_link.zh : MESSAGES.invalid_link.en);
+    };
+    const id = takeCapturedRelayId();
+    if (id) show(id);
+    // A link opened later in the same tab: relayLink already stripped it from the URL.
+    return onRelayLink(show);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const id = parseRelayId(link);
+    if (!id) {
+      setError(isZh ? MESSAGES.invalid_link.zh : MESSAGES.invalid_link.en);
       return;
     }
-    setChallenge(result.challenge);
-    waitForApproval(relayCode, Date.now());
+    // Never keep the secret in the field after use.
+    setLink('');
+    void openRelay(id);
   };
 
   if (!open) {
@@ -110,65 +88,33 @@ export function RelayOpener({ locale }: { locale: SupportedLocale }) {
       </div>
       <p className="mt-1 text-[12.5px] leading-relaxed text-[#5C626E]">
         {isZh
-          ? 'iPhone 用 Apple 裝置端模型遮蔽文件，再用代號做雲端稽核。這裡只會看到代號：真正的姓名和數字只在你的 iPhone 上。'
-          : 'Your iPhone masked the document with Apple’s on-device model and audited the tokens in the cloud. You see tokens here; the real names and numbers stay on your iPhone.'}
+          ? 'iPhone 用 Apple 裝置端模型遮蔽文件，再用代號做雲端稽核，然後分享一個連結。這裡只會看到代號：真正的姓名和數字只在你的 iPhone 上。'
+          : 'Your iPhone masked the document with Apple’s on-device model, audited the tokens in the cloud and shared a link. You see tokens here; the real names and numbers stay on your iPhone.'}
       </p>
-      <form onSubmit={(e) => void submit(e)} className="mt-3 flex flex-wrap items-center gap-2">
-        <label htmlFor="relay-code" className="sr-only">{isZh ? '6 位數代碼' : '6-digit code'}</label>
+      <form onSubmit={submit} className="mt-3 flex flex-wrap items-center gap-2">
+        <label htmlFor="relay-link" className="sr-only">{isZh ? '分享連結' : 'Shared link'}</label>
         <input
-          id="relay-code"
-          inputMode="numeric"
+          id="relay-link"
+          type="password"
           autoComplete="off"
-          maxLength={7}
-          value={code}
+          spellCheck={false}
+          value={link}
           onChange={(e) => {
-            setCode(e.target.value.replace(/[^\d ]/g, ''));
-            setProblem(null);
+            setLink(e.target.value);
+            setError(null);
           }}
-          placeholder="123456"
-          className="min-h-[44px] w-[140px] rounded border border-[#E2E5EA] px-3 font-mono text-[16px] tracking-[0.2em] text-[#141518]"
+          placeholder={isZh ? '貼上 iPhone 分享的連結' : 'Paste the link shared from your iPhone'}
+          className="min-h-[44px] min-w-0 flex-1 rounded border border-[#E2E5EA] px-3 font-mono text-[12.5px] text-[#141518] sm:max-w-[460px]"
         />
         <button
           type="submit"
-          disabled={busy || !parseRelayCode(code)}
+          disabled={busy || !link.trim()}
           className="min-h-[44px] rounded-md bg-[#0F766E] px-4 text-[13px] font-medium text-[#FFFFFF] disabled:opacity-50"
         >
-          {isZh ? '連接' : 'Connect'}
+          {busy ? (isZh ? '開啟中…' : 'Opening…') : isZh ? '開啟' : 'Open'}
         </button>
-        {problem && (
-          <span role="alert" className="text-[12.5px] text-[#BE123C]">
-            {isZh ? MESSAGES[problem].zh : MESSAGES[problem].en}
-          </span>
-        )}
+        {error && <span role="alert" className="text-[12.5px] text-[#BE123C]">{error}</span>}
       </form>
-
-      {challenge && (
-        <div className="mt-3 rounded-md border border-[#0F766E]/30 bg-[#F0FDFA] px-3.5 py-3" data-testid="relay-challenge" role="status">
-          <p className="text-[12.5px] text-[#0F766E]">
-            {isZh ? '在 iPhone 上輸入這個確認碼並核准：' : 'On your iPhone, enter this confirmation number and approve:'}
-          </p>
-          <p className="mt-1 font-mono text-[26px] font-semibold tracking-[0.25em] text-[#141518]">{challenge}</p>
-          <div className="mt-1 flex flex-wrap items-center gap-3 text-[12px] text-[#5C626E]">
-            <span>{isZh ? '等待 iPhone 核准…' : 'Waiting for approval on the iPhone…'}</span>
-            <button
-              type="button"
-              data-testid="relay-approved"
-              onClick={() => {
-                const relayCode = parseRelayCode(code);
-                if (!relayCode) return;
-                stopPolling();
-                waitForApproval(relayCode, Date.now(), 0);
-              }}
-              className="font-medium text-[#0F766E] underline-offset-2 hover:underline"
-            >
-              {isZh ? '我已在 iPhone 核准' : 'I approved it on my iPhone'}
-            </button>
-            <button type="button" onClick={reset} className="font-medium text-[#0F766E] underline-offset-2 hover:underline">
-              {isZh ? '取消' : 'Cancel'}
-            </button>
-          </div>
-        </div>
-      )}
 
       {audit && (
         <div className="mt-4 grid gap-3 lg:grid-cols-2" data-testid="relay-result">
@@ -219,8 +165,8 @@ export function RelayOpener({ locale }: { locale: SupportedLocale }) {
           {audit.expiresAt && (
             <p className="text-[11.5px] text-[#5C626E] lg:col-span-2">
               {isZh
-                ? `這個代碼將於 ${audit.expiresAt.toLocaleString()} 失效。`
-                : `This code expires at ${audit.expiresAt.toLocaleString()}.`}
+                ? `這個連結將於 ${audit.expiresAt.toLocaleString()} 失效。`
+                : `This link expires at ${audit.expiresAt.toLocaleString()}.`}
             </p>
           )}
         </div>

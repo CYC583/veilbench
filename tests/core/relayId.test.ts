@@ -1,14 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { parseRelayCode } from '../../src/services/sessionStore';
+import { parseRelayId } from '../../src/integrations/relayLink';
 
-describe('relay code parsing', () => {
-  it('accepts the 6-digit code shown on the iPhone, with or without spaces', () => {
-    expect(parseRelayCode('123456')).toBe('123456');
-    expect(parseRelayCode('123 456')).toBe('123456');
+describe('relay link parsing (128-bit ID in the URL fragment)', () => {
+  const id = '0123456789abcdef0123456789abcdef';
+  it('accepts a bare ID or a shared link', () => {
+    expect(parseRelayId(id)).toBe(id);
+    expect(parseRelayId(`https://veilbench-hybrid-ai.web.app/#relay=${id}`)).toBe(id);
+    expect(parseRelayId(`  #relay=${id}  `)).toBe(id);
   });
-  it('rejects anything else', () => {
-    expect(parseRelayCode('12345')).toBeNull();
-    expect(parseRelayCode('1234567')).toBeNull();
-    expect(parseRelayCode('abcdef')).toBeNull();
+  it('rejects six-digit codes, uppercase, wrong length and junk', () => {
+    expect(parseRelayId('123456')).toBeNull();
+    expect(parseRelayId(id.toUpperCase())).toBeNull();
+    expect(parseRelayId(`#relay=${id}0`)).toBeNull();
+    expect(parseRelayId(`#relay=${id.slice(1)}`)).toBeNull();
+    expect(parseRelayId('')).toBeNull();
   });
 });
