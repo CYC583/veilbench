@@ -252,7 +252,7 @@ export function AuditWorkbench({
     const lines: string[] = [
       '# VeilBench Zero-PII Audit Report',
       `Generated: ${new Date().toISOString()}`,
-      'Privacy Guarantee: Strictly sanitized placeholder tokens only. Zero raw PII included.',
+      'Privacy note: placeholder tokens only; raw values were replaced on-device before export.',
       '',
     ];
     if (triage) {

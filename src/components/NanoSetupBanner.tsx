@@ -32,20 +32,20 @@ export function NanoSetupBanner({
               {nanoStatus !== 'available' ? (
                 isZh ? (
                   <>
-                    <strong>優雅降級模式：</strong>目前瀏覽器尚未啟用 Chrome Gemini Nano（狀態：
+                    <strong>雲端安全模式：</strong>這個瀏覽器的 Gemini Nano 目前
                     <code className="mx-1 rounded bg-[#F1F3F5] px-1.5 py-0.5 font-mono text-[12px]">
                       {NANO_STATUS_ZH[nanoStatus]}
                     </code>
-                    ）。Layer 2 本機確定性防禦盾與 Layer 3 斷路器仍 100% 正常保護您的資料。
+                    ，所以遮蔽改由本機規則完成，快速初判改在雲端用代號執行。原始姓名與數字仍不會離開這台裝置。
                   </>
                 ) : (
                   <>
-                    <strong>Graceful Fallback Active:</strong> Chrome Built-in Gemini Nano is{' '}
+                    <strong>Cloud-safe mode:</strong> Gemini Nano is{' '}
                     <code className="mx-1 rounded bg-[#F1F3F5] px-1.5 py-0.5 font-mono text-[12px]">
                       {nanoStatus}
                     </code>
-                    . Layer 2 Local Deterministic PII Shield &amp; Layer 3 Pre-Flight Guard remain
-                    100% active.
+                    in this browser, so masking uses local rules and the quick check runs in the cloud on
+                    tokens only. Raw names and numbers still never leave this device.
                   </>
                 )
               ) : isZh ? (
