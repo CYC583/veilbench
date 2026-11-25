@@ -49,6 +49,9 @@ interface AuditWorkbenchProps {
   hasDocuments?: boolean;
   onRetryCloud: () => void;
   onDismissCloudFailure: () => void;
+  /** Explicit running flags (A2 parallel run); default to deriving from `stage`. */
+  triageRunning?: boolean;
+  deepRunning?: boolean;
 }
 
 const failedStepLabel: Record<CloudFailureState['action'], { en: string; zh: string }> = {
@@ -208,14 +211,16 @@ export function AuditWorkbench({
   hasDocuments = false,
   onRetryCloud,
   onDismissCloudFailure,
+  triageRunning,
+  deepRunning,
 }: AuditWorkbenchProps) {
   const isZh = locale === 'zh-TW';
   const [rehydrateView, setRehydrateView] = useState<boolean>(true);
   const [copiedEmail, setCopiedEmail] = useState<boolean>(false);
   const [chatInput, setChatInput] = useState<string>('');
 
-  const isLoadingTriage = stage === 'running_triage';
-  const isLoadingDeep = stage === 'running_deep_audit';
+  const isLoadingTriage = triageRunning ?? stage === 'running_triage';
+  const isLoadingDeep = deepRunning ?? stage === 'running_deep_audit';
   const isSendingChat = stage === 'sending_chat';
 
   // A cloud failure keeps the workbench (and the follow-up chat) mounted with an inline Retry.

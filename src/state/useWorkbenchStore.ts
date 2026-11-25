@@ -40,6 +40,8 @@ import {
   buildRelationalHints,
   formatRelationalHints,
   runLocalAirlock,
+  buildDecisionCard,
+  type DecisionCard,
 } from '../core';
 import {
   ensureAnonymousUser,
@@ -74,6 +76,8 @@ export type WorkbenchStage =
   | 'scanning_pii'
   | 'running_triage'
   | 'running_deep_audit'
+  /** A2: on-device first verdict and cloud deep audit running at the same time. */
+  | 'running_parallel'
   | 'sending_chat'
   | 'translating';
 
@@ -116,6 +120,21 @@ export interface WorkbenchState {
   appCheckStatus: AppCheckUiStatus;
   isInspectorOpen: boolean;
   isHistoryOpen: boolean;
+  /** A1: sign-or-fix decision, computed on-device from the audit + vault. */
+  decisionCard: DecisionCard | null;
+  /** A2: timings of the last parallel hybrid run (ms since start; null while running). */
+  parallelRun: ParallelRunState | null;
+  triageRunning: boolean;
+  deepRunning: boolean;
+}
+
+export interface ParallelRunState {
+  /** performance.now() at start, for the live timers. */
+  startedAt: number;
+  triageMs: number | null;
+  deepMs: number | null;
+  triageSource: ActualInferenceSource | null;
+  deepSource: ActualInferenceSource | null;
 }
 
 export type CloudAction = 'triage' | 'deep_audit' | 'chat';
@@ -269,6 +288,7 @@ export function useWorkbenchStore() {
   const [stageMessage, setStageMessage] = useState<string>('');
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [cloudFailure, setCloudFailure] = useState<CloudFailureState | null>(null);
+  const [parallelRun, setParallelRun] = useState<ParallelRunState | null>(null);
   const [lastRouterDecision, setLastRouterDecision] = useState<RouterDecision | null>(null);
   const [lastFirestorePayload, setLastFirestorePayload] =
     useState<SanitizedFirestoreSession | null>(null);
@@ -474,6 +494,7 @@ export function useWorkbenchStore() {
         setSessionId(activeSessionId);
         setTriage(null);
         setDeepAudit(null);
+        setParallelRun(null);
         setCloudFailure(null);
         setChatHistory([]);
         setTranslatedCache({
@@ -653,6 +674,7 @@ export function useWorkbenchStore() {
         setVault(createEmptyVault());
         setTriage(null);
         setDeepAudit(null);
+        setParallelRun(null);
         setChatHistory([]);
       }
       await recomputeSecurityProof(nextDocs, vault, nextEntities);
@@ -744,8 +766,9 @@ export function useWorkbenchStore() {
   /**
    * Stage 2: Rapid Offline-Ready Triage (PREFER_ON_DEVICE).
    */
-  const executeRapidTriage = useCallback(async () => {
-    if (documents.length === 0) return;
+  const executeRapidTriage = useCallback(async (opts?: { inParallel?: boolean }): Promise<TriageResult | null> => {
+    const inParallel = Boolean(opts?.inParallel);
+    if (documents.length === 0) return null;
     setErrorBanner(null);
     setCloudFailure(null);
 
@@ -765,11 +788,11 @@ export function useWorkbenchStore() {
 
     if (!decision.allowedToProceed) {
       setErrorBanner(decision.blockedReason ?? decision.reason);
-      return;
+      return null;
     }
 
-    setStage('running_triage');
-    setStageMessage(
+    if (!inParallel) setStage('running_triage');
+    if (!inParallel) setStageMessage(
       decision.targetEngine === 'on_device'
         ? 'Stage 2: Running rapid risk triage on-device via Chrome Gemini Nano...'
         : 'Stage 2: Running rapid risk triage via Firebase AI Logic (Sanitized Payload)...'
@@ -780,20 +803,24 @@ export function useWorkbenchStore() {
         sanitizedText: sanitizedCombined,
         mode: decision.recommendedMode,
         remoteConfig,
-        onRetryNotice: setStageMessage,
+        onRetryNotice: inParallel ? undefined : setStageMessage,
       });
       setTriage(result);
       pushTelemetry(evt);
-      await persistZeroPiiSession(result, deepAudit);
+      if (!inParallel) await persistZeroPiiSession(result, deepAudit);
+      return result;
     } catch (err) {
       reportStageError(
         err,
         'triage',
         'Rapid triage failed. Verify Firebase configuration or Chrome Gemini Nano status.'
       );
+      return null;
     } finally {
-      setStage('idle');
-      setStageMessage('');
+      if (!inParallel) {
+        setStage('idle');
+        setStageMessage('');
+      }
     }
   }, [
     deepAudit,
@@ -812,8 +839,12 @@ export function useWorkbenchStore() {
    * Stage 4: Escalate to Cloud Gemini (Cross-Document Audit, Interactive Redlines & Playbook).
    * Strictly gated by Layer 3 Pre-Flight Circuit Breaker.
    */
-  const executeDeepAudit = useCallback(async (retryOnly?: 'analysis' | 'playbook') => {
-    if (documents.length === 0) return;
+  const executeDeepAudit = useCallback(async (
+    retryOnly?: 'analysis' | 'playbook',
+    opts?: { inParallel?: boolean }
+  ): Promise<DeepAuditResult | null> => {
+    const inParallel = Boolean(opts?.inParallel);
+    if (documents.length === 0) return null;
     setErrorBanner(null);
     setCloudFailure(null);
 
@@ -838,7 +869,7 @@ export function useWorkbenchStore() {
         `Layer 3 Pre-Flight Circuit Breaker BLOCKED cloud escalation: ${assertion?.leaks.length ?? 1} unredacted leak(s) detected.`
       );
       setIsInspectorOpen(true);
-      return;
+      return null;
     }
 
     const sanitizedCombined = combineDocumentsText(documents, 'sanitizedText');
@@ -859,12 +890,12 @@ export function useWorkbenchStore() {
 
     if (!decision.allowedToProceed) {
       setErrorBanner(decision.blockedReason ?? decision.reason);
-      return;
+      return null;
     }
 
     setIsInspectorOpen(false);
-    setStage('running_deep_audit');
-    setStageMessage(
+    if (!inParallel) setStage('running_deep_audit');
+    if (!inParallel) setStageMessage(
       documents.length > 1
         ? 'Stage 4: Running Cross-Document Contradiction & Redline Audit via Cloud Gemini (Zero-PII Verified)...'
         : 'Stage 4: Synthesizing Interactive Redline Diff & Negotiation Playbook via Cloud Gemini...'
@@ -876,7 +907,7 @@ export function useWorkbenchStore() {
         documents,
         mode: decision.recommendedMode,
         remoteConfig,
-        onRetryNotice: setStageMessage,
+        onRetryNotice: inParallel ? undefined : setStageMessage,
         onlyParts: retryOnly && deepAudit ? [retryOnly] : undefined,
       });
       // Partial retry: keep the half that already succeeded, fill in the re-run half.
@@ -915,14 +946,17 @@ export function useWorkbenchStore() {
           partialPart: partialFailure.part,
         });
       }
-      await persistZeroPiiSession(triage, finalAudit);
+      if (!inParallel) await persistZeroPiiSession(triage, finalAudit);
+      return finalAudit;
     } catch (err) {
       const golden = activeSamplePackId ? SAMPLE_GOLDEN_AUDITS[activeSamplePackId] : undefined;
+      let fallback: DeepAuditResult | null = null;
       if (err instanceof CloudStageError && golden) {
         // Every model failed: show the recorded real result for this built-in sample, clearly badged,
         // while the retry card below keeps the live path one click away.
         const parts: AuditPart[] = retryOnly ? [retryOnly] : ['analysis', 'playbook'];
-        setDeepAudit((prev) => fillFromGolden(retryOnly ? prev : null, golden, parts));
+        fallback = fillFromGolden(retryOnly ? deepAudit : null, golden, parts);
+        setDeepAudit(fallback);
         logCacheUse(parts, golden);
       }
       reportStageError(
@@ -930,9 +964,12 @@ export function useWorkbenchStore() {
         'deep_audit',
         'Cloud deep audit failed. Check network connection and Firebase App Check / AI Logic configuration.'
       );
+      return fallback;
     } finally {
-      setStage('idle');
-      setStageMessage('');
+      if (!inParallel) {
+        setStage('idle');
+        setStageMessage('');
+      }
     }
   }, [
     activeSamplePackId,
@@ -950,6 +987,40 @@ export function useWorkbenchStore() {
     userPreference,
     vault,
   ]);
+
+  /**
+   * A2 · Parallel hybrid: the on-device first verdict (Stage 2) and the cloud deep audit (Stage 4, sanitized
+   * relations only, Layer 3-gated) start together. The decision card shows the first answer that arrives
+   * and upgrades in place when the deep audit returns. Each path's wall-clock time is recorded.
+   */
+  const executeParallelHybrid = useCallback(async () => {
+    if (documents.length === 0) return;
+    setStage('running_parallel');
+    setStageMessage('Stage 2 + 4: on-device first verdict and cloud deep audit running in parallel...');
+    const started = performance.now();
+    setParallelRun({ startedAt: started, triageMs: null, deepMs: null, triageSource: null, deepSource: null });
+    const elapsed = () => Math.max(1, Math.round(performance.now() - started));
+    try {
+      const [tri, deep] = await Promise.all([
+        executeRapidTriage({ inParallel: true }).then((r) => {
+          setParallelRun((p) => p && { ...p, triageMs: elapsed(), triageSource: r?.inferenceSource ?? null });
+          return r;
+        }),
+        executeDeepAudit(undefined, { inParallel: true }).then((r) => {
+          setParallelRun((p) => p && { ...p, deepMs: elapsed(), deepSource: r?.inferenceSource ?? null });
+          return r;
+        }),
+      ]);
+      logHybridAnalyticsEvent('parallel_hybrid_completed', {
+        triage_ok: Boolean(tri),
+        deep_ok: Boolean(deep),
+      });
+      if (tri || deep) await persistZeroPiiSession(tri ?? triage, deep ?? deepAudit);
+    } finally {
+      setStage('idle');
+      setStageMessage('');
+    }
+  }, [deepAudit, documents.length, executeDeepAudit, executeRapidTriage, persistZeroPiiSession, triage]);
 
   /**
    * Multi-Turn Follow-Up Chat: sanitizes user input locally, sends sanitized turn, re-hydrates response locally.
@@ -1165,6 +1236,7 @@ export function useWorkbenchStore() {
     setZeroLeakProof(null);
     setTriage(null);
     setDeepAudit(null);
+    setParallelRun(null);
     setChatHistory([]);
     setErrorBanner(null);
     setTranslatedCache({
@@ -1204,6 +1276,15 @@ export function useWorkbenchStore() {
 
   const combinedSanitizedPayload = outboundPayload;
 
+  const decisionCard = useMemo(
+    () => buildDecisionCard({ triage, deepAudit, vault }),
+    [deepAudit, triage, vault]
+  );
+  const triageRunning = stage === 'running_triage'
+    || (stage === 'running_parallel' && parallelRun?.triageMs === null);
+  const deepRunning = stage === 'running_deep_audit'
+    || (stage === 'running_parallel' && parallelRun?.deepMs === null);
+
   return {
     state: {
       sessionId,
@@ -1235,6 +1316,10 @@ export function useWorkbenchStore() {
       appCheckStatus,
       isInspectorOpen,
       isHistoryOpen,
+      decisionCard,
+      parallelRun,
+      triageRunning,
+      deepRunning,
     } satisfies WorkbenchState,
     combinedSanitizedPayload,
     actions: {
@@ -1256,6 +1341,7 @@ export function useWorkbenchStore() {
       tryLeak,
       executeRapidTriage,
       executeDeepAudit,
+      executeParallelHybrid,
       sendChatMessage,
       toggleLocaleWithAiTranslation,
       restoreSessionFromHistory,
