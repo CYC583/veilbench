@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+dist-ssr/
+
+# Environment variables (NEVER commit real keys)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+*.key
+serviceAccountKey*.json
+
+# Firebase local cache & project bindings
+.firebase/
+.firebaserc
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Internal planning & multi-agent handoff docs (keep out of public GitHub repo)
+COMPETITION_BRIEF.md
+PROJECT_STATUS.md
+FIREBASE_SETUP_CHECKLIST.md
+ARCHITECTURE_PLAN.md
+CODEX_HANDOFF.md
+CLAUDE_HANDOFF.md
+.serena/
+*.tsbuildinfo
+
+# OS & Editor
+.DS_Store
+*.log
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Local agent tooling (preview launch config, worktrees)
+.claude/

@@ -1,0 +1,39 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Field allowlist (not a blocklist): a renamed raw field such as "rawTxt" can never slip through.
+    function validSession(d) {
+      return d.keys().hasOnly([
+          'id', 'uid', 'title', 'category', 'documentCount', 'sanitizedExcerpts',
+          'zeroLeakProofHash', 'triage', 'deepAudit', 'updatedAt'
+        ])
+        && d.uid == request.auth.uid
+        && d.id is string && d.id.size() <= 80
+        && d.title is string && d.title.size() <= 200
+        && d.category in ['contract', 'medical', 'financial', 'custom']
+        && d.documentCount is int && d.documentCount >= 1 && d.documentCount <= 12
+        && d.sanitizedExcerpts is list && d.sanitizedExcerpts.size() <= 12
+        && d.zeroLeakProofHash is string && d.zeroLeakProofHash.size() <= 80
+        && d.updatedAt is string && d.updatedAt.size() <= 40
+        && (!('triage' in d) || d.triage is map)
+        && (!('deepAudit' in d) || d.deepAudit is map);
+    }
+
+    // Strictly isolate sanitized Zero-PII audit sessions per Firebase Auth UID
+    match /sanitized_sessions/{sessionId} {
+      allow read, delete: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow create: if request.auth != null
+        && request.resource.data.id == sessionId
+        && validSession(request.resource.data);
+      allow update: if request.auth != null
+        && resource.data.uid == request.auth.uid
+        && validSession(request.resource.data);
+    }
+
+    // Deny all other collections by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
