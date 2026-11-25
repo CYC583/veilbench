@@ -19,9 +19,9 @@ Pocket 從 Remote Config 的 `cloud_model_name` 和 `cloud_model_fallbacks` 取�
 
 完成稽核後，Pocket 對每個即將保存的風險標題、說明與信件重跑 Layer 3。通過後使用 Anonymous Auth 將稽核寫到 `sanitized_sessions`，收到 Firestore 伺服器確認才顯示 **Synced**。Firestore 啟用磁碟持久化。首次匿名登入仍需要連線。原始輸入與本機代號表只存在記憶體。
 
-在稽核結果點選 **Create pairing code** 才會另行分享。網頁使用已登入的 Firebase 身分，對 `relays/{六位數}` 執行單筆伺服器讀取。手機會產生可含前導零的隨機碼，存放最多五筆 `flags`（`title`、`severity`、`summary`）、`emailSanitized`、`createdAt` 與 `expiresAt`。App 將有效期設為 15 分鐘，rules 的上限為 24 小時。Firestore 規則拒絕列舉、修改、刪除與過期讀取。
+在稽核結果點選 **Create pairing code** 會建立一筆至多有效 24 小時的接力。網頁以匿名身分輸入配對碼並顯示另一組六位數確認碼，使用者在 iPhone 輸入網頁上的確認碼，按 **Approve this browser**。只有手機及其核准的單一接收身分可讀取風險與代號版信件。內容欄位是 `flags` 和 `emailSanitized`，另有 `ownerUid`、`createdAt`、`expiresAt`。正式存取規則會拒絕列舉接力、修改結果、改派接收端及逾期讀取。
 
-**接力的安全邊界。** 持碼且登入者可於有效期內讀取。六位數約有 20 位元的隨機空間，Firestore rules 無法對匿名身分逐次限速。代號化文字仍可能包含敏感的商業條款。到期後伺服器拒絕新讀取，先前取得的副本仍存在；自動清除伺服器文件需要另行設定 TTL。
+**接力的安全邊界。** 持碼且登入者可提出配對請求。雙方需比對網頁上的確認碼，未經手機核准的身分無法取得接力內容。六位數約有 20 位元的隨機空間，Firestore rules 無法對匿名身分逐次限速。代號化文字仍可能包含敏感的商業條款。到期後伺服器拒絕新讀取，先前取得的副本仍存在；自動清除伺服器文件需要另行設定 TTL。
 
 ## Where Firebase AI Logic is called
 

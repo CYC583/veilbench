@@ -101,14 +101,13 @@ enum PocketServices {
   }
 
   static func publishRelay(_ result: PocketResult) async throws -> String {
-    _ = try await userID()
+    let uid = try await userID()
     for attempt in 1...3 {
       let code = pairingCode()
       let doc = database.collection("relays").document(code)
       do {
-        // A shorter client window tolerates small clock offsets while rules cap it at 24 hours.
-        try await doc.setData(["createdAt": FieldValue.serverTimestamp(),
-                               "expiresAt": Timestamp(date: Date().addingTimeInterval(15 * 60)),
+        try await doc.setData(["ownerUid": uid, "createdAt": FieldValue.serverTimestamp(),
+                               "expiresAt": Timestamp(date: Date().addingTimeInterval(24 * 60 * 60)),
                                "flags": result.relayFlags, "emailSanitized": result.email])
         return code
       } catch {
@@ -120,4 +119,34 @@ enum PocketServices {
     }
     throw PocketResult.ExportError.invalidSize
   }
+
+  enum PairingError: LocalizedError {
+    case noUniqueRequest, alreadyPaired
+    var errorDescription: String? {
+      switch self {
+      case .noUniqueRequest: "No unique matching browser. Check the confirmation number on your browser."
+      case .alreadyPaired: "This code has already been approved for a different browser."
+      }
+    }
+  }
+
+  static func approveRecipient(code: String, challenge: String) async throws {
+    guard challenge.range(of: #"^[0-9]{6}$"#, options: .regularExpression) != nil else {
+      throw PairingError.noUniqueRequest
+    }
+    let relay = database.collection("relays").document(code)
+    let matches = try await relay.collection("requests").whereField("challenge", isEqualTo: challenge)
+      .limit(to: 2).getDocuments(source: .server)
+    guard matches.documents.count == 1, let uid = matches.documents.first?.documentID else {
+      throw PairingError.noUniqueRequest
+    }
+    let approval = relay.collection("pairing").document("approval")
+    let prior = try await approval.getDocument(source: .server)
+    if prior.exists {
+      guard prior.data()?["receiverUid"] as? String == uid else { throw PairingError.alreadyPaired }
+      return
+    }
+    try await approval.setData(["receiverUid": uid, "challenge": challenge, "approvedAt": FieldValue.serverTimestamp()])
+  }
+
 }

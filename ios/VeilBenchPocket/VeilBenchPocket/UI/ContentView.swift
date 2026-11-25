@@ -4,6 +4,7 @@ struct ContentView: View {
   @State private var model = PipelineModel()
   @State private var previewExpanded = false
   @State private var showServices = false
+  @State private var relayChallenge = ""
   @FocusState private var editorFocused: Bool
 
   var body: some View {
@@ -287,10 +288,18 @@ struct ContentView: View {
         auditResults(report)
         Divider()
         Text(model.syncStatus).font(.footnote)
-        Text("Anyone signed in with the six-digit code can read the tokenized flags and letter for 15 minutes.")
+        Text("The pairing code expires within 24 hours. Only the browser you confirm here can read the tokenized flags and letter.")
           .font(.caption).foregroundStyle(Theme.muted)
         if let code = model.relayCode {
           Text(code).font(.title.monospacedDigit()).textSelection(.enabled)
+            .onAppear { relayChallenge = "" }
+          if !model.recipientApproved {
+            TextField("Confirmation number from your browser", text: $relayChallenge)
+              .keyboardType(.numberPad).textFieldStyle(.roundedBorder)
+              .accessibilityIdentifier("relayConfirmation")
+            Button("Approve this browser") { Task { await model.approveRecipient(challenge: relayChallenge) } }
+              .disabled(model.publishingRelay || relayChallenge.range(of: #"^[0-9]{6}$"#, options: .regularExpression) == nil)
+          }
         } else {
           Button("Create pairing code") { Task { await model.publishRelay() } }
             .disabled(!model.canPublish)
