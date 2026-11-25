@@ -17,6 +17,7 @@ import type {
   BoundingBoxNormalized,
   PiiEntity,
   PreFlightAssertion,
+  SemanticRole,
   VaultMap,
   ZeroLeakProof,
 } from '../types/privacy';
@@ -36,6 +37,8 @@ interface PrivacyDiffPaneProps {
   nanoAvailable?: boolean;
   locale: SupportedLocale;
   onToggleEntity: (docId: string, entityId: string) => void;
+  /** Human-in-the-loop: always mask a word the detectors missed. */
+  onAddCustomTerm?: (value: string, role: SemanticRole) => Promise<'added' | 'too_short' | 'not_found'>;
   onSetImageReviewed?: (docId: string, reviewed: boolean) => void;
   onAddManualRegion?: (docId: string, bbox: BoundingBoxNormalized) => void;
   onUndoManualRegion?: (docId: string) => void;
@@ -108,6 +111,7 @@ export function PrivacyDiffPane({
   nanoAvailable = false,
   locale,
   onToggleEntity,
+  onAddCustomTerm,
   onSetImageReviewed,
   onAddManualRegion,
   onUndoManualRegion,
@@ -119,6 +123,16 @@ export function PrivacyDiffPane({
   const [drawingBoxes, setDrawingBoxes] = useState(false);
   const [mobilePane, setMobilePane] = useState<'raw' | 'safe'>('safe');
   const [zoomImage, setZoomImage] = useState(false);
+  const [customTerm, setCustomTerm] = useState('');
+  const [customRole, setCustomRole] = useState<SemanticRole>('PERSON_NAME');
+  const [customStatus, setCustomStatus] = useState<'added' | 'too_short' | 'not_found' | null>(null);
+  const submitCustomTerm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onAddCustomTerm) return;
+    const result = await onAddCustomTerm(customTerm, customRole);
+    setCustomStatus(result);
+    if (result === 'added') setCustomTerm('');
+  };
   const manualRegions = (doc.imageRegions ?? []).filter((r) => r.id.startsWith('manual_'));
   const enabledCount = entities.filter((e) => e.enabled).length;
   const vaultSize = Object.keys(vault.byOriginal).length;
@@ -251,12 +265,56 @@ export function PrivacyDiffPane({
               >
                 <span>{ent.token}</span>
                 <span className="text-[10px] opacity-70">
-                  {ent.layer === 'gemini_nano' ? 'Nano' : 'Regex'}
+                  {ent.layer === 'gemini_nano' ? 'Nano' : ent.layer === 'user_manual' ? (isZh ? '手動' : 'Manual') : 'Regex'}
                 </span>
               </button>
             ))
           )}
         </div>
+        {onAddCustomTerm && (
+          <form onSubmit={(e) => void submitCustomTerm(e)} className="mt-2 flex flex-wrap items-center gap-1.5">
+            <label htmlFor="custom-term" className="font-mono text-[11px] uppercase tracking-wider text-[#5C626E]">
+              {isZh ? '漏掉的詞：' : 'Missed something?'}
+            </label>
+            <input
+              id="custom-term"
+              value={customTerm}
+              onChange={(e) => {
+                setCustomTerm(e.target.value);
+                setCustomStatus(null);
+              }}
+              placeholder={isZh ? '輸入要遮蔽的字詞，例如人名或專案代號' : 'Type a word to always mask, e.g. a name or project code'}
+              className="min-h-[36px] min-w-0 flex-1 rounded border border-[#E2E5EA] bg-[#FFFFFF] px-2.5 text-[12.5px] text-[#141518] sm:max-w-[320px]"
+            />
+            <select
+              aria-label={isZh ? '類型' : 'Type'}
+              value={customRole}
+              onChange={(e) => setCustomRole(e.target.value as SemanticRole)}
+              className="min-h-[36px] rounded border border-[#E2E5EA] bg-[#FFFFFF] px-2 text-[12.5px] text-[#141518]"
+            >
+              <option value="PERSON_NAME">{isZh ? '人名' : 'Person'}</option>
+              <option value="ORGANIZATION">{isZh ? '公司／組織' : 'Organization'}</option>
+              <option value="ADDRESS">{isZh ? '地址' : 'Address'}</option>
+              <option value="OTHER_PII">{isZh ? '其他' : 'Other'}</option>
+            </select>
+            <button
+              type="submit"
+              disabled={isBusy || customTerm.trim().length < 2}
+              className="min-h-[36px] rounded border border-[#0F766E]/40 bg-[#FFFFFF] px-3 text-[12.5px] font-medium text-[#0F766E] disabled:opacity-50"
+            >
+              {isZh ? '遮蔽' : 'Mask it'}
+            </button>
+            {customStatus && (
+              <span role="status" className={`text-[12px] ${customStatus === 'added' ? 'text-[#0F766E]' : 'text-[#BE123C]'}`}>
+                {customStatus === 'added'
+                  ? isZh ? '已遮蔽，並重新檢查送出內容。' : 'Masked in every document; the outbound check was re-run.'
+                  : customStatus === 'not_found'
+                    ? isZh ? '文件裡找不到這個詞。' : 'That word does not appear in these documents.'
+                    : isZh ? '請至少輸入 2 個字。' : 'Enter at least 2 characters.'}
+              </span>
+            )}
+          </form>
+        )}
       </div>
 
       {/* Multimodal Canvas Pixel Burn-In Comparison (when image scan is present) */}

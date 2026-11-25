@@ -92,6 +92,10 @@ const patterns: ReadonlyArray<[SemanticRole, RegExp]> = [
   ['ADDRESS', /\b\d{1,6}[ \t]+(?:[A-Z][a-z]+[ \t]+){1,4}(?:St|Street|Ave|Avenue|Rd|Road|Blvd|Lane|Ln|Dr|Drive|Way|Ct|Court)\.?(?:,[ \t]*(?:Apt|Suite|Ste|Unit)\.?[ \t]*\w+)?(?:,[ \t]*[A-Z][a-zA-Z .]+)?(?:,[ \t]*[A-Z]{2}[ \t]+\d{5}(?:-\d{4})?)?/g],
   ['ID_NUMBER', /\b(?:Q|PO|SOW)-\d{4}-\d{2,}\b/g],
   ['PHONE', /(?<![\w+])(?:\+\d{1,3}[ .-]?(?:\(\d{1,4}\)|\d{1,4})(?:[ .-]?\d){5,10}|(?:\(\d{3}\)[ .-]?|\d{3}[ .-])\d{3}[ .-]\d{4}|(?:\(0[2-8]\) ?|0[2-8]-)\d{3,4}-\d{4}|09\d{2}[- ]?\d{3}[- ]?\d{3})\b/g],
+  // Traditional / Simplified Chinese documents (no \b: word boundaries do not apply to CJK).
+  ['MONEY_AMOUNT', /(?:新[臺台]幣|台幣|人民幣|美金)[ \t]*\d[\d,]*(?:\.\d+)?(?:[ \t]*萬)?(?:[ \t]*元)?|(?<![\d,.])\d[\d,]*(?:\.\d+)?[ \t]*萬?元/g],
+  ['SENSITIVE_DATE', /(?:民國[ \t]*)?\d{2,4}[ \t]*年[ \t]*\d{1,2}[ \t]*月[ \t]*\d{1,2}[ \t]*日/g],
+  ['ID_NUMBER', /(?:統一編號|統編)[ \t]*[:：]?[ \t]*(\d{8})(?!\d)/g],
 ];
 
 export function scanDeterministicPii(text: string): RawNanoEntityCandidate[] {
@@ -107,6 +111,9 @@ export function scanDeterministicPii(text: string): RawNanoEntityCandidate[] {
 const capWord = `[A-Z][\\w&'.-]*`;
 const personName = `[A-Z][a-z'-]+(?:[ \\t]+[A-Z]\\.)?(?:[ \\t]+[A-Z][a-z'-]+){1,2}`;
 const orgSuffix = `(?:LLC|L\\.L\\.C\\.|Inc\\.?|INC\\.?|Incorporated|Ltd\\.?|LTD\\.?|Limited|Corp\\.?|CORP\\.?|Corporation|GmbH|PLC|LLP)`;
+const cjkOrgSuffix = `(?:股份有限公司|有限公司|有限責任公司|企業社|工作室|事務所|商行|公司)`;
+const cjkName = `[\\u4e00-\\u9fff]{2,4}`;
+const cjkParty = `[\\u4e00-\\u9fff][\\u4e00-\\u9fffA-Za-z0-9]{1,20}?${cjkOrgSuffix}|${cjkName}(?![\\u4e00-\\u9fff])`;
 const contextualPatterns: ReadonlyArray<[SemanticRole, RegExp]> = [
   ['PARTY_CLIENT', new RegExp(`(${capWord}(?:[ \\t]+${capWord}){0,5})[ \\t]*\\([ \\t]*["“](?:Client|Customer|Company|Buyer|Licensee)["”]`, 'g')],
   ['PARTY_CONTRACTOR', new RegExp(`(${capWord}(?:[ \\t]+${capWord}){0,5})[ \\t]*\\([ \\t]*["“](?:Contractor|Consultant|Vendor|Supplier|Provider|Licensor|Seller)["”]`, 'g')],
@@ -115,6 +122,12 @@ const contextualPatterns: ReadonlyArray<[SemanticRole, RegExp]> = [
   ['ORGANIZATION', new RegExp(`\\b([A-Z][A-Za-z&'-]*(?:[ \\t]+[A-Z][A-Za-z&'-]*){0,4}[ \\t]+${orgSuffix})(?![A-Za-z])`, 'g')],
   // Labeled street addresses: the value must contain a digit and ends at a column separator or line end.
   ['ADDRESS', /\b(?:Address|Addr\.|Residence|Mailing Address)[ \t]*:[ \t]*([^\n|]*?\d[^\n|]*?)(?=[ \t]*(?:\||\n|$))/g],
+  // Chinese contracts: 甲方 is usually the client and 乙方 the contractor.
+  ['PARTY_CLIENT', new RegExp(`甲方[ \\t]*[:：][ \\t]*(${cjkParty})`, 'g')],
+  ['PARTY_CONTRACTOR', new RegExp(`乙方[ \\t]*[:：][ \\t]*(${cjkParty})`, 'g')],
+  ['PERSON_NAME', new RegExp(`(?:姓名|聯絡人|联系人|負責人|负责人|代表人|法定代理人|簽約人|签约人|立約人|病患|患者|收件人|承辦人|經辦人)[ \\t]*[:：][ \\t]*(${cjkName})(?![\\u4e00-\\u9fff])`, 'g')],
+  ['ORGANIZATION', new RegExp(`([\\u4e00-\\u9fff]{2,12}${cjkOrgSuffix})`, 'g')],
+  ['ADDRESS', /[\u4e00-\u9fff]{2}[市縣县](?:[\u4e00-\u9fff]{1,3}[區区鄉乡鎮镇市])?[\u4e00-\u9fff\d]{1,12}?(?:路|街|大道)(?:[一二三四五六七八九十\d]+段)?(?:\d+巷)?(?:\d+弄)?\d+(?:之\d+)?號(?:\d+樓(?:之\d+)?)?/g],
 ];
 
 /** Context-anchored names, parties and organizations (case-insensitive equivalence is handled by locate). */
@@ -126,7 +139,9 @@ export function scanContextualPii(text: string): RawNanoEntityCandidate[] {
       const value = (match[1] ?? match[0]).trim();
       const key = value.toLowerCase();
       // Already-tokenized text (e.g. "Address: [ADDRESS_1]") is never a fresh finding.
-      if (value.length < 3 || value.includes('[') || seen.has(key)) continue;
+      // Chinese names are often 2 characters; Latin values need 3+ to avoid noise.
+      const minLength = /[\u4e00-\u9fff]/.test(value) ? 2 : 3;
+      if (value.length < minLength || value.includes('[') || seen.has(key)) continue;
       seen.add(key);
       candidates.push({ role, value });
     }
@@ -200,8 +215,10 @@ interface Candidate extends RawNanoEntityCandidate { layer: DetectionLayer }
 
 export function runLocalAirlock(params: {
   documentId: string; rawText: string; nanoCandidates?: RawNanoEntityCandidate[]; existingVault?: VaultMap;
+  /** Terms the user asked to always mask (Human-in-the-loop); vaulted like Nano findings, layer user_manual. */
+  manualCandidates?: RawNanoEntityCandidate[];
 }): AirlockResult {
-  const { documentId, rawText, nanoCandidates = [], existingVault } = params;
+  const { documentId, rawText, nanoCandidates = [], existingVault, manualCandidates = [] } = params;
   const vault = createEmptyVault();
   const candidates = new Map<string, Candidate>();
   if (existingVault) {
@@ -211,15 +228,19 @@ export function runLocalAirlock(params: {
       candidates.set(entry.originalValue, { value: entry.originalValue, role: entry.role, layer: 'deterministic_regex' });
     }
   }
-  for (const candidate of nanoCandidates) {
+  const external: Array<[RawNanoEntityCandidate, DetectionLayer]> = [
+    ...nanoCandidates.map(c => [c, 'gemini_nano'] as [RawNanoEntityCandidate, DetectionLayer]),
+    ...manualCandidates.map(c => [c, 'user_manual'] as [RawNanoEntityCandidate, DetectionLayer]),
+  ];
+  for (const [candidate, layer] of external) {
     const trimmed = candidate.value.trim();
     if (trimmed.length < 2) continue;
-    candidates.set(trimmed, { ...candidate, value: trimmed, layer: 'gemini_nano' });
+    candidates.set(trimmed, { ...candidate, value: trimmed, layer });
     // `locate` is literal for short values, so add every other casing that actually occurs in the text
     // ("ada" and "ADA" for "Ada"); each one is vaulted, none is dropped.
     if (!matchesCaseInsensitively(candidate.role, trimmed)) {
       for (const variant of casingsInText(rawText, trimmed)) {
-        if (!candidates.has(variant)) candidates.set(variant, { ...candidate, value: variant, layer: 'gemini_nano' });
+        if (!candidates.has(variant)) candidates.set(variant, { ...candidate, value: variant, layer });
       }
     }
   }

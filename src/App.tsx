@@ -291,6 +291,7 @@ export function App() {
             onToggleEntity={(docId, entityId) =>
               void actions.toggleEntityRedaction(docId, entityId)
             }
+            onAddCustomTerm={actions.addCustomTerm}
             onSetImageReviewed={(docId, reviewed) => void actions.setImageReviewed(docId, reviewed)}
             onAddManualRegion={(docId, bbox) => void actions.addManualRegion(docId, bbox)}
             onUndoManualRegion={(docId) => void actions.undoManualRegion(docId)}

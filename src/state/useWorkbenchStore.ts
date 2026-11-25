@@ -12,6 +12,7 @@ import type {
   ImageRedactionRegion,
   PiiEntity,
   PreFlightAssertion,
+  SemanticRole,
   VaultMap,
   ZeroLeakProof,
 } from '../types/privacy';
@@ -756,6 +757,47 @@ export function useWorkbenchStore() {
   );
 
   /** Q-2 "Try to leak": un-redacts the first enabled token so Layer 3 visibly blocks escalation. */
+  /**
+   * Human-in-the-loop: the user names a word the detectors missed (a project code name, a Chinese name in a
+   * non-Nano browser). It is vaulted in every document, in every casing that occurs, and the payload,
+   * images and Layer 3 proof are recomputed. Existing toggles are kept.
+   */
+  const addCustomTerm = useCallback(
+    async (rawValue: string, role: SemanticRole): Promise<'added' | 'too_short' | 'not_found'> => {
+      const value = rawValue.trim();
+      if (value.length < 2) return 'too_short';
+      const lower = value.toLowerCase();
+      if (!documents.some((d) => d.rawText.toLowerCase().includes(lower))) return 'not_found';
+
+      let workingVault = vault;
+      const nextEntitiesByDoc: Record<string, PiiEntity[]> = { ...entitiesByDoc };
+      const nextDocs: WorkbenchDocument[] = [];
+      for (const d of documents) {
+        const disabled = new Set((entitiesByDoc[d.id] ?? []).filter((e) => !e.enabled).map((e) => e.originalValue));
+        const airlock = runLocalAirlock({
+          documentId: d.id,
+          rawText: d.rawText,
+          existingVault: workingVault,
+          manualCandidates: [{ value, role }],
+        });
+        workingVault = airlock.vault;
+        const entities = airlock.entities.map((e) => (disabled.has(e.originalValue) ? { ...e, enabled: false } : e));
+        nextEntitiesByDoc[d.id] = entities;
+        nextDocs.push({
+          ...d,
+          sanitizedText: applyRedactionWithToggles(d.rawText, entities),
+          redactedImageDataUrl: await burnImageForEntities(d, entities),
+        });
+      }
+      setVault(workingVault);
+      setEntitiesByDoc(nextEntitiesByDoc);
+      setDocuments(nextDocs);
+      await recomputeSecurityProof(nextDocs, workingVault, nextEntitiesByDoc);
+      return 'added';
+    },
+    [documents, entitiesByDoc, recomputeSecurityProof, vault]
+  );
+
   const tryLeak = useCallback(async () => {
     const docId = activeDocId ?? documents[0]?.id;
     const target = docId ? entitiesByDoc[docId]?.find((e) => e.enabled) : undefined;
@@ -1343,6 +1385,7 @@ export function useWorkbenchStore() {
       addCustomDocument,
       removeDocument,
       toggleEntityRedaction,
+      addCustomTerm,
       setImageReviewed,
       addManualRegion,
       undoManualRegion,

@@ -42,7 +42,7 @@ describe('Canvas pixel burn-in', () => {
     ]);
     expect(result).toBe(png);
     expect(canvas).toMatchObject({ width: 100, height: 80 });
-    expect(ctx.drawImage).toHaveBeenCalledWith(expect.any(FakeImage), 0, 0);
+    expect(ctx.drawImage).toHaveBeenCalledWith(expect.any(FakeImage), 0, 0, 100, 80);
     expect(ctx.fillRect.mock.calls).toEqual([[21, 16, 34, 28], [0, 56, 24, 24]]);
     expect(ctx.fillText.mock.calls).toEqual([['[REDACTED]', 38, 30, 34], ['[REDACTED]', 12, 68, 24]]);
     expect(ctx).toMatchObject({ textAlign: 'center', textBaseline: 'middle', font: expect.stringContaining('monospace') });

@@ -16,13 +16,24 @@ export type RelationalHint =
 const MAX_HINTS = 24;
 
 export function parseMoneyAmount(value: string): number | null {
-  const digits = value.replace(/NT\$|US\$|[$€£¥]|\b(?:USD|TWD|EUR|GBP)\b/gi, '').replace(/[,\s]/g, '');
+  // Chinese amounts: 新臺幣480,000元, 48萬元 (萬 = 10,000).
+  const tenThousand = /萬/.test(value) ? 10_000 : 1;
+  const digits = value
+    .replace(/NT\$|US\$|[$€£¥]|\b(?:USD|TWD|EUR|GBP)\b|新[臺台]幣|台幣|人民幣|美金|萬|元/gi, '')
+    .replace(/[,\s]/g, '');
   if (!/^\d+(?:\.\d+)?$/.test(digits)) return null;
-  const n = Number(digits);
+  const n = Number(digits) * tenThousand;
   return Number.isFinite(n) ? n : null;
 }
 
 export function parseCalendarDate(value: string): number | null {
+  // 2026年3月1日 or 民國115年3月1日 (ROC year + 1911).
+  const cjk = value.match(/^(民國)?\s*(\d{2,4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日$/);
+  if (cjk) {
+    const year = Number(cjk[2]) + (cjk[1] || Number(cjk[2]) < 1000 ? 1911 : 0);
+    const t = Date.UTC(year, Number(cjk[3]) - 1, Number(cjk[4]));
+    return Number.isFinite(t) ? t : null;
+  }
   const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   const t = iso ? Date.UTC(+iso[1], +iso[2] - 1, +iso[3]) : Date.parse(`${value} UTC`);
   return Number.isFinite(t) ? t : null;
@@ -91,6 +102,10 @@ export function formatRelationalHints(hints: RelationalHint[]): string {
 const diffPattern = /\{\{DIFF:(\[[A-Z_]+_\d+\])-(\[[A-Z_]+_\d+\])\}\}/g;
 
 function formatLikeSource(amount: number, sample: string): string {
+  if (/元/.test(sample)) {
+    const prefix = sample.match(/新[臺台]幣|台幣|人民幣|美金/)?.[0] ?? '';
+    return `${prefix}${amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}元`;
+  }
   const symbol = sample.match(/NT\$|US\$|[$€£¥]/)?.[0] ?? '';
   const code = symbol ? '' : sample.match(/\b(?:USD|TWD|EUR|GBP)\b/i)?.[0];
   const body = amount.toLocaleString('en-US', { maximumFractionDigits: 2 });
