@@ -62,14 +62,12 @@ import {
   CloudStageError,
 } from '../services/aiLogicService';
 import {
-  deleteSanitizedSession,
-  listSanitizedSessions,
   saveSanitizedSession,
   type FirestoreSyncState,
 } from '../services/sessionStore';
 import { registerAuditedTexts } from '../services/egressLedger';
 import { SAMPLE_PACKS, type SampleDocumentSpec } from '../data/sampleDocuments';
-import { SAMPLE_GOLDEN_AUDITS, type GoldenAuditRecord } from '../data/sampleGoldenAudits';
+import { SAMPLE_GOLDEN_AUDITS } from '../data/sampleGoldenAudits';
 import {
   burnImageForEntities,
   buildOutboundPayload,
@@ -82,6 +80,8 @@ import {
   type AuditPart,
 } from './workbenchHelpers';
 import { useRunController } from './useRunController';
+import { useTelemetryLog } from './useTelemetryLog';
+import { useSessionHistory } from './useSessionHistory';
 
 export type WorkbenchStage =
   | 'idle'
@@ -180,7 +180,6 @@ export function useWorkbenchStore() {
   const [triage, setTriage] = useState<TriageResult | null>(null);
   const [deepAudit, setDeepAudit] = useState<DeepAuditResult | null>(null);
   const [chatHistory, setChatHistory] = useState<ChatTurn[]>([]);
-  const [telemetry, setTelemetry] = useState<TelemetryEvent[]>([]);
 
   const [isOnline, setIsOnline] = useState<boolean>(() =>
     typeof navigator !== 'undefined' ? navigator.onLine : true
@@ -201,6 +200,15 @@ export function useWorkbenchStore() {
   const [stage, setStage] = useState<WorkbenchStage>('idle');
   const [stageMessage, setStageMessage] = useState<string>('');
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
+  const {
+    savedSessions,
+    lastFirestorePayload,
+    setLastFirestorePayload,
+    firestoreSync,
+    loadHistory,
+    recordSaved,
+    deleteSessions,
+  } = useSessionHistory(setErrorBanner);
   const [cloudFailure, setCloudFailure] = useState<CloudFailureState | null>(null);
   const [parallelRun, setParallelRun] = useState<ParallelRunState | null>(null);
   const goIdle = useCallback(() => {
@@ -210,10 +218,6 @@ export function useWorkbenchStore() {
   const { beginRun, abortRun, settleRun, cancelRun, cancelledNotice, dismissCancelledNotice } =
     useRunController(goIdle);
   const [lastRouterDecision, setLastRouterDecision] = useState<RouterDecision | null>(null);
-  const [lastFirestorePayload, setLastFirestorePayload] =
-    useState<SanitizedFirestoreSession | null>(null);
-  const [savedSessions, setSavedSessions] = useState<SanitizedFirestoreSession[]>([]);
-  const [firestoreSync, setFirestoreSync] = useState<FirestoreSyncState | null>(null);
   const [outboundPayload, setOutboundPayload] = useState<string>('');
   /** Built-in sample currently loaded unmodified (enables the badged demo cache); null for user content. */
   const [activeSamplePackId, setActiveSamplePackId] = useState<string | null>(null);
@@ -221,32 +225,7 @@ export function useWorkbenchStore() {
   const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
 
-  const pushTelemetry = useCallback((evt: TelemetryEvent) => {
-    setTelemetry((prev) => [evt, ...prev].slice(0, 60));
-  }, []);
-
-  /** Records an honest "cached" event whenever a recorded demo result is shown instead of a live one. */
-  const logCacheUse = useCallback(
-    (parts: AuditPart[], golden: GoldenAuditRecord) => {
-      pushTelemetry({
-        id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        timestamp: new Date().toISOString(),
-        task: 'cross_doc_contradiction',
-        requestedMode: 'prefer_in_cloud',
-        actualSource: 'IN_CLOUD',
-        latencyMs: 0,
-        inputChars: 0,
-        piiInterceptedCount: 0,
-        status: 'cached',
-        errorKind: 'live_call_failed',
-        cloudModelUsed: parts.includes('analysis') ? golden.analysisModel : golden.playbookModel,
-        appCheckStatus: 'offline_bypass',
-        note: `Recorded demo result shown for ${parts.join(' + ')} (recorded ${golden.recordedAt.slice(0, 10)}); live call failed.`,
-      });
-      logHybridAnalyticsEvent('cache_fallback_used', { parts: parts.join('+') });
-    },
-    [pushTelemetry]
-  );
+  const { telemetry, pushTelemetry, logCacheUse } = useTelemetryLog();
 
   /** Routes classified cloud failures to the inline retry card + Inference Log; other errors to the banner. */
   const reportStageError = useCallback(
@@ -286,8 +265,7 @@ export function useWorkbenchStore() {
       setRemoteConfig(rc);
 
       await ensureAnonymousUser();
-      const history = await listSanitizedSessions();
-      setSavedSessions(history);
+      await loadHistory();
     })();
 
     return () => {
@@ -378,17 +356,9 @@ export function useWorkbenchStore() {
         deepAudit: nextDeepAudit ?? undefined,
         updatedAt: new Date().toISOString(),
       });
-      setLastFirestorePayload(res.payload);
-      setFirestoreSync('pending');
-      void res.synced.then((state) => {
-        setFirestoreSync((current) => (current === 'pending' ? state : current));
-      });
-      setSavedSessions((prev) => {
-        const filtered = prev.filter((s) => s.id !== res.payload.id);
-        return [res.payload, ...filtered].slice(0, 12);
-      });
+      recordSaved(res.payload, res.synced);
     },
-    [documents, sessionId, vault, zeroLeakProof]
+    [documents, recordSaved, sessionId, vault, zeroLeakProof]
   );
 
   /**
@@ -1210,23 +1180,6 @@ export function useWorkbenchStore() {
     setLastFirestorePayload(sess);
     setIsHistoryOpen(false);
   }, []);
-
-  /**
-   * Deletes saved Zero-PII sessions (one, or all when ids is omitted). The list updates at once; if the
-   * server rejects a delete, that session is put back and the error is shown.
-   */
-  const deleteSessions = useCallback(async (ids?: string[]) => {
-    const targets = savedSessions.filter((s) => !ids || ids.includes(s.id));
-    if (targets.length === 0) return;
-    setSavedSessions((prev) => prev.filter((s) => !targets.some((t) => t.id === s.id)));
-    const results = await Promise.all(targets.map((t) => deleteSanitizedSession(t.id)));
-    const failed = targets.filter((_, i) => results[i] === 'failed');
-    if (failed.length) {
-      setSavedSessions((prev) => [...failed, ...prev].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
-      setErrorBanner(`Could not delete ${failed.length} saved session(s). Check your connection and try again.`);
-    }
-    logHybridAnalyticsEvent('sessions_deleted', { count: targets.length - failed.length, failed: failed.length });
-  }, [savedSessions]);
 
   /** User pressed Cancel: stop the in-flight request; nothing more is sent and no error is shown. */
   const cancelCurrentRun = useCallback(() => {
