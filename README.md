@@ -85,11 +85,19 @@ Detection is best effort, which is why every outbound byte is shown and checked 
 - **WebMCP tools** (Chrome origin trial): `veilbench_check_contract` and `veilbench_get_decision`. Results contain tokens only; exact amounts are shown to the user on-device and never returned to an agent. Source: [`src/integrations/agentSurface.ts`](./src/integrations/agentSurface.ts).
 - **Files:** PDF (text extracted on-device with pdf.js; scanned PDFs become an image for pixel redaction), Word `.docx`, text, PNG and JPEG, up to 20 MB. Phone photos are scaled to 2000 px before redaction. Nothing is uploaded at this step.
 - **From iPhone:** VeilBench Pocket shares a link (`…/#relay=<128-bit id>`). Opening it on the web shows the iPhone's token-only audit. The ID lives only in the URL fragment, which is never sent to a server, and the page strips it from the address bar before Firebase or Analytics load; the link expires and the real values stay on the phone.
-- **iOS:** see [`ios/README.md`](./ios/README.md).
+- **iOS:** VeilBench Pocket uses Firebase AI Logic (Apple Foundation Models on-device, Gemini in the cloud), App Check, Remote Config, Anonymous Authentication and Cloud Firestore (private sessions with offline persistence, and short-lived relays). See [`ios/README.md`](./ios/README.md).
 
 ## Leak benchmark
 
-A fixed set of fictional documents with known identifiers runs in CI and reports what was caught and missed for rules only, rules + Layer 3, and Nano + rules. Results: [`docs/BENCHMARK.md`](./docs/BENCHMARK.md).
+20 fictional documents with 50 labeled sensitive values, scored on the exact prompts the app would send (measured 2026-11-26 05:18 Taipei; the rules columns re-run in CI):
+
+| Mode | Masked or blocked | Still in the sendable prompt |
+| :--- | ---: | ---: |
+| Rules only | 34 / 50 | 16 / 50 |
+| Rules + Layer 3 | 34 / 50 | 16 / 50 |
+| Gemini Nano (Chrome, on-device) + rules | **44 / 50** | 6 / 50 |
+
+All 20 Nano runs reported `ON_DEVICE`, with 0 cloud calls. This measures exact-string exposure in text only; partial exposure, images, false positives and other languages are not covered yet. Details and how to reproduce: [`docs/BENCHMARK.md`](./docs/BENCHMARK.md).
 
 ---
 

@@ -21,8 +21,7 @@ TODO (A8): add measured results from real freelancer tests (time to find the con
 - **Parallel hybrid.** The on-device first verdict and the cloud deep audit start together. The decision card shows the first answer and upgrades in place; both timers are on screen.
   - Measured on 2026-11-26: Stage 2 on Gemini Nano (Chrome 158, macOS) took 7.3 s online and 10.8 s offline. In cloud-safe mode (no Nano), the first verdict arrived in 3.7 s and the cross-document audit in 6.6 s on `gemini-3.5-flash-lite`. These are single runs, not averages.
 - **Verify it yourself.** Download the exact outbound payload and run `shasum -a 256`; the digest equals the one on screen. A network egress ledger records every request the page sends (host, bytes, SHA-256) and confirms that each AI Logic request carries only text that passed the Layer 3 circuit breaker. Export it all as `veilbench-outbound.json`.
-- **Public leak benchmark in CI.** See [`docs/BENCHMARK.md`](https://github.com/CYC583/veilbench/blob/main/docs/BENCHMARK.md).
-  TODO (A4): copy the measured caught/missed table here once CI publishes it.
+- **Public leak benchmark.** On 20 fictional documents with 50 labeled sensitive values (2026-11-26), rules alone masked 34/50; with Gemini Nano on-device plus rules, **44/50**, with all 20 runs `ON_DEVICE` and 0 cloud calls. The 6 values still exposed are listed, and the rules columns re-run in CI. It measures exact-string exposure in text only ([`docs/BENCHMARK.md`](https://github.com/CYC583/veilbench/blob/main/docs/BENCHMARK.md)).
 
 ## What it does
 
@@ -49,7 +48,7 @@ TODO (A8): add measured results from real freelancer tests (time to find the con
 ## Platforms
 
 - **Web (Chrome):** Gemini Nano via Firebase AI Logic; works in any browser in cloud-safe mode.
-- **iOS — VeilBench Pocket:** Apple Foundation Models (`.systemModel()`) for on-device extraction, Gemini (`.geminiModel`) for the tokenized audit, both via Firebase AI Logic; App Check with App Attest.
+- **iOS — VeilBench Pocket:** Apple Foundation Models (`.systemModel()`) for on-device extraction, Gemini (`.geminiModel`) for the tokenized audit, both via Firebase AI Logic; App Check with App Attest; Remote Config for the model chain; Anonymous Authentication and Cloud Firestore for private sessions (offline persistence) and short-lived relays to the web.
   TODO (A5): state "shown on a real iPhone 18 Pro" only after the device recording exists; otherwise remove iOS from the platform list.
 
 ## Firebase services
