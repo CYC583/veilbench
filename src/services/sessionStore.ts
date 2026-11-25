@@ -7,6 +7,7 @@ import {
   limit,
   orderBy,
   query,
+  serverTimestamp,
   setDoc,
   where,
 } from 'firebase/firestore';
@@ -109,38 +110,75 @@ export async function deleteSanitizedSession(id: string): Promise<FirestoreSyncS
 
 /**
  * A VeilBench Pocket (iOS) audit handed to the web. Tokens only: the vault stays on the phone.
- * The relay ID is 128 random bits (32 hex chars) shared from the iPhone as a link whose fragment
- * (#relay=…) never reaches a server, so it cannot be guessed or enumerated.
+ *
+ * Pairing (enforced by firestore.rules): the phone shows a 6-digit relay code; this browser files a
+ * request with its own random 6-digit confirmation number; the user types that number on the phone,
+ * which approves exactly one browser. Only then can this browser read the relay. Guessing a code is
+ * useless without the phone's approval.
  */
 export interface RelayAudit {
-  id: string;
+  code: string;
   flags: Array<{ title: string; severity: 'high' | 'medium' | 'low'; summary: string }>;
   emailSanitized: string;
   expiresAt: Date | null;
 }
 
-export type RelayReadResult =
-  | { status: 'ok'; audit: RelayAudit }
+export type RelayRequestResult =
+  | { status: 'requested'; challenge: string }
   | { status: 'invalid_code' | 'not_found' | 'offline' | 'error' };
 
-/** Accepts a bare relay ID or a full link containing #relay=<id>; returns the ID or null. */
-export function parseRelayId(input: string): string | null {
-  const trimmed = input.trim();
-  const fromLink = trimmed.match(/[#&]relay=([0-9a-fA-F]{32})(?![0-9a-fA-F])/);
-  const id = fromLink ? fromLink[1] : trimmed;
-  return /^[0-9a-fA-F]{32}$/.test(id) ? id.toLowerCase() : null;
+export type RelayReadResult =
+  | { status: 'ok'; audit: RelayAudit }
+  | { status: 'waiting' | 'invalid_code' | 'offline' | 'error' };
+
+export function parseRelayCode(input: string): string | null {
+  const code = input.replace(/\s+/g, '');
+  return /^\d{6}$/.test(code) ? code : null;
 }
 
-/** Reads relays/{id}. Rules allow a single get of an unexpired ID by a signed-in user (no listing). */
+function randomChallenge(): string {
+  const n = crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000;
+  return n.toString().padStart(6, '0');
+}
+
+/** Files (or re-reads) this browser's pairing request and returns the number to confirm on the phone. */
+export async function requestRelayAccess(input: string): Promise<RelayRequestResult> {
+  const code = parseRelayCode(input);
+  if (!code) return { status: 'invalid_code' };
+  const { db } = getFirebaseServices();
+  const user = await ensureAnonymousUser();
+  if (!db || !user) return { status: 'offline' };
+  const ref = doc(db, 'relays', code, 'requests', user.uid);
+  try {
+    const existing = await getDoc(ref);
+    const prior = existing.exists() ? (existing.data() as { challenge?: unknown }).challenge : undefined;
+    if (typeof prior === 'string') return { status: 'requested', challenge: prior };
+  } catch {
+    // Not readable yet (no request, or the relay does not exist); try to create one below.
+  }
+  const challenge = randomChallenge();
+  try {
+    await setDoc(ref, { challenge, createdAt: serverTimestamp() });
+    return { status: 'requested', challenge };
+  } catch (err) {
+    const errCode = (err as { code?: string } | null)?.code;
+    // Rules reject requests for missing or expired relays (and the phone's own browser session).
+    if (errCode === 'permission-denied' || errCode === 'not-found') return { status: 'not_found' };
+    if (errCode === 'unavailable') return { status: 'offline' };
+    return { status: 'error' };
+  }
+}
+
+/** Reads relays/{code}; 'waiting' until the phone has approved this browser. */
 export async function readRelayAudit(input: string): Promise<RelayReadResult> {
-  const id = parseRelayId(input);
-  if (!id) return { status: 'invalid_code' };
+  const code = parseRelayCode(input);
+  if (!code) return { status: 'invalid_code' };
   const { db } = getFirebaseServices();
   const user = await ensureAnonymousUser();
   if (!db || !user) return { status: 'offline' };
   try {
-    const snap = await getDoc(doc(db, 'relays', id));
-    if (!snap.exists()) return { status: 'not_found' };
+    const snap = await getDoc(doc(db, 'relays', code));
+    if (!snap.exists()) return { status: 'waiting' };
     const d = snap.data() as Record<string, unknown>;
     const flags = Array.isArray(d.flags) ? d.flags.filter((f): f is RelayAudit['flags'][number] =>
       !!f && typeof f === 'object' && typeof (f as { title?: unknown }).title === 'string'
@@ -150,17 +188,16 @@ export async function readRelayAudit(input: string): Promise<RelayReadResult> {
     return {
       status: 'ok',
       audit: {
-        id,
+        code,
         flags,
         emailSanitized: typeof d.emailSanitized === 'string' ? d.emailSanitized : '',
         expiresAt: typeof expires?.toDate === 'function' ? expires.toDate() : null,
       },
     };
   } catch (err) {
-    const code = (err as { code?: string } | null)?.code;
-    // Rules deny reads of expired IDs; to the user that is the same as "not found".
-    if (code === 'permission-denied' || code === 'not-found') return { status: 'not_found' };
-    if (code === 'unavailable') return { status: 'offline' };
+    const errCode = (err as { code?: string } | null)?.code;
+    if (errCode === 'permission-denied') return { status: 'waiting' }; // not approved yet
+    if (errCode === 'unavailable') return { status: 'offline' };
     return { status: 'error' };
   }
 }

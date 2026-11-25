@@ -84,7 +84,7 @@ Detection is best effort, which is why every outbound byte is shown and checked 
 - **Chrome extension** ([`extension/`](./extension)): select text on any page → right-click **Check with VeilBench**. The page receives it through `window.postMessage({ type: 'veilbench.intake.v1' })`, masks it locally, and asks before anything goes to the cloud. Install with `chrome://extensions` → Developer mode → **Load unpacked** → `extension/`.
 - **WebMCP tools** (Chrome origin trial): `veilbench_check_contract` and `veilbench_get_decision`. Results contain tokens only; exact amounts are shown to the user on-device and never returned to an agent. Source: [`src/integrations/agentSurface.ts`](./src/integrations/agentSurface.ts).
 - **Files:** PDF (text extracted on-device with pdf.js; scanned PDFs become an image for pixel redaction), Word `.docx`, text, PNG and JPEG, up to 20 MB. Phone photos are scaled to 2000 px before redaction. Nothing is uploaded at this step.
-- **From iPhone:** VeilBench Pocket shares a link (`…#relay=<128-bit id>`); opening it on the web shows the iPhone's token-only audit. The fragment never reaches a server, the link expires after 15 minutes, and the real values stay on the phone.
+- **From iPhone:** VeilBench Pocket shows a 6-digit code. The browser asks for access with its own confirmation number, and you approve that number on the phone; only that one browser can then read the token-only audit (enforced in `firestore.rules`). The real values stay on the phone.
 - **iOS:** see [`ios/README.md`](./ios/README.md).
 
 ## Leak benchmark
