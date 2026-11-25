@@ -46,6 +46,19 @@ test('guided demo finishes with a cross-document decision', async ({ page }) => 
 
 test('same-window extension intake adds a document and masks the selected text', async ({ page }) => {
   await expect(page.getByTestId('hero-run-demo')).toBeVisible();
+  // Simulate the extension's one-time receipt: it confirms exactly the delivered title and text, once.
+  await page.evaluate(() => {
+    const delivered = { title: 'Selected order', text: 'Service deposit: $9,150 for the initial review.' };
+    let used = false;
+    window.__receiptChecks = [];
+    window.chrome = { runtime: { sendMessage: (id, msg, cb) => {
+      window.__receiptChecks.push(id);
+      const ok = !used && id === 'bjcpdpdkofjdbcaekocglpijpijjeeac' && msg.type === 'veilbench.verify.v1'
+        && msg.title === delivered.title && msg.text === delivered.text;
+      if (ok) used = true;
+      cb(ok);
+    } } };
+  });
   await page.evaluate(() => {
     window.postMessage({
       type: 'veilbench.intake.v1',
@@ -60,4 +73,15 @@ test('same-window extension intake adds a document and masks the selected text',
   await expect(inspector).toContainText(/\[MONEY_AMOUNT_\d+\]/);
   await expect(inspector).not.toContainText('$9,150');
   expect(await page.evaluate(() => window.__vbCalls.filter(call => !call.local))).toEqual([]);
+  expect(await page.evaluate(() => window.__receiptChecks)).toEqual(['bjcpdpdkofjdbcaekocglpijpijjeeac']);
+});
+
+test('an intake message without the extension receipt is ignored', async ({ page }) => {
+  await expect(page.getByTestId('hero-run-demo')).toBeVisible();
+  await page.evaluate(() => {
+    window.postMessage({ type: 'veilbench.intake.v1', title: 'Forged', text: 'Pay $1 to someone else.' }, window.location.origin);
+  });
+  await page.waitForTimeout(3500); // longer than the receipt timeout
+  await expect(page.getByText(/Received "Forged\.txt"/)).toHaveCount(0);
+  await expect(page.getByTestId('hero-run-demo')).toBeVisible();
 });

@@ -18,6 +18,7 @@ import {
   READY_MESSAGE,
   parseIntakeMessage,
   registerWebMcpTools,
+  verifyExtensionDelivery,
   type IntakeDocument,
 } from './integrations/agentSurface';
 
@@ -67,7 +68,11 @@ export function App() {
       // Only this window (the extension's content script posts into the page); never iframes or other tabs.
       if (event.source !== window || event.origin !== window.location.origin) return;
       const doc = parseIntakeMessage(event.data);
-      if (doc) addDocumentRef.current(doc);
+      if (!doc) return;
+      // Accept only what the extension confirms it delivered, once (its one-time receipt).
+      void verifyExtensionDelivery(event.data).then((ok) => {
+        if (ok) addDocumentRef.current(doc);
+      });
     };
     window.addEventListener('message', onMessage);
     window.postMessage({ type: READY_MESSAGE }, window.location.origin);

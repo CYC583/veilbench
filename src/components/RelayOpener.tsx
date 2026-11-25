@@ -52,7 +52,7 @@ export function RelayOpener({ locale }: { locale: SupportedLocale }) {
     setBusy(false);
   };
 
-  const waitForApproval = (relayCode: string, startedAt: number) => {
+  const waitForApproval = (relayCode: string, startedAt: number, delay = POLL_MS) => {
     pollRef.current = window.setTimeout(async () => {
       const result = await readRelayAudit(relayCode);
       if (result.status === 'ok') {
@@ -68,7 +68,7 @@ export function RelayOpener({ locale }: { locale: SupportedLocale }) {
         setBusy(false);
         pollRef.current = null;
       }
-    }, POLL_MS);
+    }, delay);
   };
 
   const submit = async (e: React.FormEvent) => {
@@ -150,6 +150,19 @@ export function RelayOpener({ locale }: { locale: SupportedLocale }) {
           <p className="mt-1 font-mono text-[26px] font-semibold tracking-[0.25em] text-[#141518]">{challenge}</p>
           <div className="mt-1 flex flex-wrap items-center gap-3 text-[12px] text-[#5C626E]">
             <span>{isZh ? '等待 iPhone 核准…' : 'Waiting for approval on the iPhone…'}</span>
+            <button
+              type="button"
+              data-testid="relay-approved"
+              onClick={() => {
+                const relayCode = parseRelayCode(code);
+                if (!relayCode) return;
+                stopPolling();
+                waitForApproval(relayCode, Date.now(), 0);
+              }}
+              className="font-medium text-[#0F766E] underline-offset-2 hover:underline"
+            >
+              {isZh ? '我已在 iPhone 核准' : 'I approved it on my iPhone'}
+            </button>
             <button type="button" onClick={reset} className="font-medium text-[#0F766E] underline-offset-2 hover:underline">
               {isZh ? '取消' : 'Cancel'}
             </button>

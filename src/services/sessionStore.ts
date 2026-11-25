@@ -3,6 +3,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocFromServer,
   getDocs,
   limit,
   orderBy,
@@ -177,7 +178,8 @@ export async function readRelayAudit(input: string): Promise<RelayReadResult> {
   const user = await ensureAnonymousUser();
   if (!db || !user) return { status: 'offline' };
   try {
-    const snap = await getDoc(doc(db, 'relays', code));
+    // Always from the server: a cached copy must never stand in for the phone's approval.
+    const snap = await getDocFromServer(doc(db, 'relays', code));
     if (!snap.exists()) return { status: 'waiting' };
     const d = snap.data() as Record<string, unknown>;
     const flags = Array.isArray(d.flags) ? d.flags.filter((f): f is RelayAudit['flags'][number] =>

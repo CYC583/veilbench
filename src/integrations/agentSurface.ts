@@ -14,6 +14,38 @@ import type { DecisionCard } from '../core/decisionCard';
 export const INTAKE_MESSAGE = 'veilbench.intake.v1';
 export const READY_MESSAGE = 'veilbench.ready.v1';
 export const MAX_INTAKE_CHARS = 200_000;
+/** The VeilBench Selection extension (fixed ID via the manifest key). */
+export const EXTENSION_ID = 'bjcpdpdkofjdbcaekocglpijpijjeeac';
+
+interface ChromeRuntimeLike {
+  sendMessage: (extensionId: string, message: unknown, callback: (response: unknown) => void) => void;
+  lastError?: unknown;
+}
+
+/**
+ * One-time receipt check: asks the extension whether it really delivered exactly this title and text to
+ * this tab. The extension answers true once, then forgets the selection. Anything else (no extension, a
+ * page script posting a fake intake, a replay) is rejected — fail closed.
+ */
+export async function verifyExtensionDelivery(raw: unknown, timeoutMs = 3000): Promise<boolean> {
+  const d = raw as { title?: unknown; text?: unknown } | null;
+  if (!d || typeof d.title !== 'string' || typeof d.text !== 'string') return false;
+  const runtime = (globalThis as { chrome?: { runtime?: ChromeRuntimeLike } }).chrome?.runtime;
+  if (!runtime?.sendMessage) return false;
+  return new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => resolve(false), timeoutMs);
+    try {
+      runtime.sendMessage(EXTENSION_ID, { type: 'veilbench.verify.v1', title: d.title, text: d.text }, (response) => {
+        clearTimeout(timer);
+        void runtime.lastError; // reading it silences "Unchecked runtime.lastError" when not installed
+        resolve(response === true);
+      });
+    } catch {
+      clearTimeout(timer);
+      resolve(false);
+    }
+  });
+}
 
 export interface IntakeDocument {
   title: string;
