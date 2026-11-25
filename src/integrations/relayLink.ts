@@ -55,9 +55,3 @@ export function onRelayLink(listener: (id: string | null) => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
-
-/** The 6-digit code VeilBench Pocket shows for phone-approved pairing (spaces allowed). */
-export function parseRelayCode(input: string): string | null {
-  const code = input.replace(/\s+/g, '');
-  return /^\d{6}$/.test(code) ? code : null;
-}

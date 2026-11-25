@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseRelayCode, parseRelayId } from '../../src/integrations/relayLink';
+import { parseRelayId } from '../../src/integrations/relayLink';
 
 describe('relay link parsing (128-bit ID in the URL fragment)', () => {
   const id = '0123456789abcdef0123456789abcdef';
@@ -16,14 +16,5 @@ describe('relay link parsing (128-bit ID in the URL fragment)', () => {
     expect(parseRelayId('')).toBeNull();
     expect(parseRelayId(`https://elsewhere.example/#relay=${id}`)).toBeNull();
     expect(parseRelayId(`#relay=${id}&other=value`)).toBeNull();
-  });
-});
-
-describe('six-digit pairing code', () => {
-  it('accepts the code with or without spaces, and nothing else', () => {
-    expect(parseRelayCode('123456')).toBe('123456');
-    expect(parseRelayCode('123 456')).toBe('123456');
-    expect(parseRelayCode('12345')).toBeNull();
-    expect(parseRelayCode('0123456789abcdef0123456789abcdef')).toBeNull();
   });
 });
