@@ -14,5 +14,7 @@ describe('relay link parsing (128-bit ID in the URL fragment)', () => {
     expect(parseRelayId(`#relay=${id}0`)).toBeNull();
     expect(parseRelayId(`#relay=${id.slice(1)}`)).toBeNull();
     expect(parseRelayId('')).toBeNull();
+    expect(parseRelayId(`https://elsewhere.example/#relay=${id}`)).toBeNull();
+    expect(parseRelayId(`#relay=${id}&other=value`)).toBeNull();
   });
 });

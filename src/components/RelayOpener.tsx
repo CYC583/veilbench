@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Copy, Smartphone } from 'lucide-react';
 import type { SupportedLocale } from '../types/audit';
 import { readRelayAudit, type RelayAudit, type RelayReadResult } from '../services/sessionStore';
@@ -28,11 +28,19 @@ export function RelayOpener({ locale }: { locale: SupportedLocale }) {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const openRelay = async (id: string) => {
-    setBusy(true);
+  const requestNumber = useRef(0);
+  const openRelay = async (id: string | null) => {
+    const current = ++requestNumber.current;
+    setOpen(true);
+    setBusy(id !== null);
     setError(null);
     setAudit(null);
+    if (id === null) {
+      setError(isZh ? MESSAGES.invalid_link.zh : MESSAGES.invalid_link.en);
+      return;
+    }
     const result = await readRelayAudit(id);
+    if (current !== requestNumber.current) return;
     setBusy(false);
     if (result.status === 'ok') setAudit(result.audit);
     else setError(isZh ? MESSAGES[result.status].zh : MESSAGES[result.status].en);
@@ -40,25 +48,15 @@ export function RelayOpener({ locale }: { locale: SupportedLocale }) {
 
   // Opened from a shared link: main.tsx already captured the ID and cleaned the address bar.
   useEffect(() => {
-    const show = (id: string | null) => {
-      setOpen(true);
-      if (id) void openRelay(id);
-      else setError(isZh ? MESSAGES.invalid_link.zh : MESSAGES.invalid_link.en);
-    };
-    const id = takeCapturedRelayId();
-    if (id) show(id);
-    // A link opened later in the same tab: relayLink already stripped it from the URL.
-    return onRelayLink(show);
+    const initial = takeCapturedRelayId();
+    if (initial !== undefined) void openRelay(initial);
+    return onRelayLink(openRelay);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     const id = parseRelayId(link);
-    if (!id) {
-      setError(isZh ? MESSAGES.invalid_link.zh : MESSAGES.invalid_link.en);
-      return;
-    }
     // Never keep the secret in the field after use.
     setLink('');
     void openRelay(id);

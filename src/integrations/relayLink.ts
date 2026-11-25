@@ -8,13 +8,14 @@
  */
 const RELAY_ID = /^[0-9a-f]{32}$/;
 
-let captured: string | null = null;
+let captured: string | null | undefined;
 
 /** Accepts a bare ID or a full link with #relay=<id>; only 32 lowercase hex characters are valid. */
 export function parseRelayId(input: string): string | null {
   const trimmed = input.trim();
-  const match = trimmed.match(/#relay=([^&\s]*)/);
-  const id = match ? match[1] : trimmed;
+  const prefix = 'https://veilbench-hybrid-ai.web.app/#relay=';
+  const id = trimmed.startsWith(prefix) ? trimmed.slice(prefix.length)
+    : trimmed.startsWith('#relay=') ? trimmed.slice('#relay='.length) : trimmed;
   return RELAY_ID.test(id) ? id : null;
 }
 
@@ -43,9 +44,9 @@ export function captureRelayFragment(): void {
 }
 
 /** Returns the captured relay ID once (then forgets it). */
-export function takeCapturedRelayId(): string | null {
+export function takeCapturedRelayId(): string | null | undefined {
   const id = captured;
-  captured = null;
+  captured = undefined;
   return id;
 }
 
