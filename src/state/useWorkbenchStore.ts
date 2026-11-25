@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   ActualInferenceSource,
   NanoAvailabilityStatus,
@@ -33,11 +33,8 @@ import {
   generateZeroLeakProof,
   sha256Hex,
   parseNanoEntitiesDefensive,
-  redactImageRegionsOnCanvas,
   rehydrateWithLocalMath,
   redactWithVault,
-  resolveImageRegions,
-  buildDeepAuditPrompt,
   buildRelationalHints,
   formatRelationalHints,
   runLocalAirlock,
@@ -73,6 +70,18 @@ import {
 import { registerAuditedTexts } from '../services/egressLedger';
 import { SAMPLE_PACKS, type SampleDocumentSpec } from '../data/sampleDocuments';
 import { SAMPLE_GOLDEN_AUDITS, type GoldenAuditRecord } from '../data/sampleGoldenAudits';
+import {
+  burnImageForEntities,
+  buildOutboundPayload,
+  collectDisabledTokens,
+  combineDocumentsText,
+  fillFromGolden,
+  isAbortError,
+  makeSessionId,
+  toUserSafeMessage,
+  type AuditPart,
+} from './workbenchHelpers';
+import { useRunController } from './useRunController';
 
 export type WorkbenchStage =
   | 'idle'
@@ -156,113 +165,6 @@ export interface CloudFailureState {
   partialPart?: 'analysis' | 'playbook';
 }
 
-/** True when a request stopped because the user cancelled it (never shown as an error). */
-function isAbortError(err: unknown): boolean {
-  if (err instanceof CloudStageError) return (err.failure.kind as string) === 'aborted';
-  const e = err as { name?: string; kind?: string } | null;
-  return e?.name === 'AbortError' || e?.kind === 'aborted';
-}
-
-/** Strips endpoint URLs and project paths from any non-classified error before it reaches the UI. */
-function toUserSafeMessage(err: unknown, fallback: string): string {
-  if (!(err instanceof Error) || !err.message) return fallback;
-  return err.message
-    .replace(/https?:\/\/\S+/g, '[endpoint]')
-    .replace(/projects\/[\w-]+/g, 'projects/[id]');
-}
-
-/** The exact Stage 4 outbound text: JSON envelope of sanitized docs + locally computed relations. */
-function buildOutboundPayload(docs: WorkbenchDocument[], vault: VaultMap): string {
-  return buildDeepAuditPrompt({
-    documents: docs.map((d) => ({
-      id: d.id,
-      title: d.title,
-      category: d.category,
-      sanitizedText: d.sanitizedText,
-      hasBurnedImage: Boolean(d.redactedImageDataUrl),
-    })),
-    relationalHints: formatRelationalHints(buildRelationalHints(vault)),
-    vault,
-  });
-}
-
-type AuditPart = 'analysis' | 'playbook';
-
-/** Fills the given Stage 4 halves from a recorded real result, marking them as cached (never silent). */
-function fillFromGolden(base: DeepAuditResult | null, golden: GoldenAuditRecord, parts: AuditPart[]): DeepAuditResult {
-  const result: DeepAuditResult = base
-    ? { ...base }
-    : {
-        contradictions: [],
-        redlines: [],
-        playbook: { executiveSummary: '', counterpartyPushback: [], readyToSendEmailSanitized: '' },
-        inferenceSource: 'IN_CLOUD',
-        generatedAt: golden.recordedAt,
-      };
-  if (parts.includes('analysis')) Object.assign(result, golden.analysis);
-  if (parts.includes('playbook')) result.playbook = golden.playbook;
-  result.cachedParts = Array.from(new Set([...(base?.cachedParts ?? []), ...parts]));
-  result.incompleteParts = (result.incompleteParts ?? []).filter((p) => !parts.includes(p));
-  if (!result.incompleteParts.length) delete result.incompleteParts;
-  result.cacheInfo = {
-    recordedAt: golden.recordedAt,
-    analysisModel: golden.analysisModel,
-    playbookModel: golden.playbookModel,
-  };
-  return result;
-}
-
-function makeSessionId(): string {
-  return `sess_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-}
-
-function combineDocumentsText(
-  docs: WorkbenchDocument[],
-  field: 'rawText' | 'sanitizedText'
-): string {
-  return docs
-    .map((d, i) => `=== DOCUMENT ${i + 1}: ${d.title} ===\n${d[field]}`)
-    .join('\n\n');
-}
-
-/**
- * Burns the document image using regions bound to the current entity toggles.
- * Fails closed: if burning fails, no image is attached to any outbound payload.
- */
-async function burnImageForEntities(
-  doc: WorkbenchDocument,
-  entities: PiiEntity[]
-): Promise<string | undefined> {
-  if (!doc.rawImageDataUrl) return undefined;
-  // Value-anchored regions plus any boxes Gemini Nano reported for enabled entities.
-  const nanoRegions = entities
-    .filter((e) => e.enabled && e.bbox)
-    .map((e) => ({ id: `nano_${e.id}`, label: e.token, bbox: e.bbox! }));
-  const regions = [...resolveImageRegions(doc.imageRegions, entities), ...nanoRegions];
-  // Every burn box was explicitly toggled off by the user; Layer 3 still audits the matching text.
-  if (regions.length === 0) return doc.rawImageDataUrl;
-  try {
-    return await redactImageRegionsOnCanvas(doc.rawImageDataUrl, regions);
-  } catch {
-    return undefined;
-  }
-}
-
-function collectDisabledTokens(entitiesByDoc: Record<string, PiiEntity[]>): Set<string> {
-  const disabled = new Set<string>();
-  const enabled = new Set<string>();
-  for (const list of Object.values(entitiesByDoc)) {
-    for (const ent of list) {
-      if (ent.enabled) enabled.add(ent.token);
-      else disabled.add(ent.token);
-    }
-  }
-  for (const token of enabled) {
-    disabled.delete(token);
-  }
-  return disabled;
-}
-
 export function useWorkbenchStore() {
   const firebaseInfo = useMemo(() => getFirebaseServices(), []);
   const [appCheckStatus, setAppCheckStatus] = useState<AppCheckUiStatus>(firebaseInfo.appCheckStatus);
@@ -301,28 +203,12 @@ export function useWorkbenchStore() {
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [cloudFailure, setCloudFailure] = useState<CloudFailureState | null>(null);
   const [parallelRun, setParallelRun] = useState<ParallelRunState | null>(null);
-  /** The in-flight cloud/on-device request, so it can be cancelled or superseded. */
-  const runControllerRef = useRef<AbortController | null>(null);
-  const [cancelledNotice, setCancelledNotice] = useState(false);
-  /** Aborts any in-flight request and starts a fresh signal for the next one. */
-  const beginRun = useCallback((): AbortSignal => {
-    runControllerRef.current?.abort();
-    const controller = new AbortController();
-    runControllerRef.current = controller;
-    setCancelledNotice(false);
-    return controller.signal;
-  }, []);
-  const abortRun = useCallback(() => {
-    runControllerRef.current?.abort();
-    runControllerRef.current = null;
-  }, []);
-  /** Returns to idle only if this run is still the current one (a newer run keeps its own stage). */
-  const settleRun = useCallback((signal: AbortSignal) => {
-    if (runControllerRef.current && runControllerRef.current.signal !== signal) return;
-    runControllerRef.current = null;
+  const goIdle = useCallback(() => {
     setStage('idle');
     setStageMessage('');
   }, []);
+  const { beginRun, abortRun, settleRun, cancelRun, cancelledNotice, dismissCancelledNotice } =
+    useRunController(goIdle);
   const [lastRouterDecision, setLastRouterDecision] = useState<RouterDecision | null>(null);
   const [lastFirestorePayload, setLastFirestorePayload] =
     useState<SanitizedFirestoreSession | null>(null);
@@ -1344,11 +1230,8 @@ export function useWorkbenchStore() {
 
   /** User pressed Cancel: stop the in-flight request; nothing more is sent and no error is shown. */
   const cancelCurrentRun = useCallback(() => {
-    if (!runControllerRef.current) return;
-    abortRun();
-    setCancelledNotice(true);
-    logHybridAnalyticsEvent('run_cancelled', { stage });
-  }, [abortRun, stage]);
+    if (cancelRun()) logHybridAnalyticsEvent('run_cancelled', { stage });
+  }, [cancelRun, stage]);
 
   const clearWorkspace = useCallback(() => {
     abortRun();
@@ -1484,7 +1367,7 @@ export function useWorkbenchStore() {
       clearWorkspace,
       deleteSessions,
       cancelCurrentRun,
-      dismissCancelledNotice: () => setCancelledNotice(false),
+      dismissCancelledNotice,
       rehydrateLocal,
     },
   };
