@@ -1,185 +1,141 @@
-# VeilBench
+# VeilBench — Catch the $6,000 before you sign
 
-**Multimodal Zero-Leak Hybrid AI Document Auditor & Negotiation Workbench**
+**Hybrid AI that cross-checks a client's contract and quote. The cloud reasons on relationships only, your device computes the exact gap, and every byte that left is verifiable.**
 
+[![CI](https://github.com/CYC583/veilbench/actions/workflows/ci.yml/badge.svg)](https://github.com/CYC583/veilbench/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-0F766E.svg)](./LICENSE)
-[![Firebase AI Logic](https://img.shields.io/badge/Firebase-AI_Logic_v12.5+-B45309.svg)](https://firebase.google.com/docs/ai-logic)
-[![Chrome Built-in AI](https://img.shields.io/badge/On--Device-Gemini_Nano_(Chrome_139+)-141518.svg)](https://developer.chrome.com/docs/ai/built-in)
+[![Firebase AI Logic](https://img.shields.io/badge/Firebase-AI_Logic-B45309.svg)](https://firebase.google.com/docs/ai-logic)
 
-VeilBench is a privacy-first web workbench built for the **Firebase #BuildHybridAI** challenge. It enables professionals to audit sensitive contracts, clinical lab reports, and financial invoices—across both **text and scanned JPEG/PNG images**—without exposing raw Personally Identifiable Information (PII) or secrets to cloud LLMs.
-
-Every AI inference call routes exclusively through **Firebase AI Logic (`firebase/ai`)**, orchestrating **Chrome Built-in Gemini Nano (`ONLY_ON_DEVICE` / `PREFER_ON_DEVICE`)** for local redaction, offline rapid triage, and semantic translation, and **Cloud Gemini (`PREFER_IN_CLOUD`)** protected by **Firebase App Check** for deep cross-document contradiction auditing, surgical redlines, and negotiation playbooks.
+- **Live demo:** https://veilbench-hybrid-ai.web.app/ (no login; press **Run the 30-second demo**)
+- **Platforms:** Web (Chrome, Gemini Nano via Firebase AI Logic) and iOS ([VeilBench Pocket](./ios/README.md), Apple Foundation Models via Firebase AI Logic)
+- Built for the Firebase **#BuildHybridAI** challenge. Not legal advice; all sample documents are fictional.
 
 ---
 
-## Why Hybrid AI Is Essential Here
+## The decision
 
-| Approach | Outcome |
+Freelancers and small studios sign client contracts and quotes without a lawyer. VeilBench turns two documents into one decision:
+
+| You give it | You get |
 | :--- | :--- |
-| **Cloud-Only AI** | Fails privacy and compliance requirements—raw SSNs, IBANs, patient MRNs, and API keys leave the user's browser; fails completely offline. |
-| **On-Device-Only AI** | Protects privacy and works offline, but small local context windows struggle with multi-document contradiction analysis, deep legal redlining, and multi-turn negotiation synthesis. |
-| **VeilBench (Hybrid AI)** | Runs a **3-layer local privacy airlock** and **offline rapid triage** on-device via Gemini Nano, then escalates **only verified, role-aliased, pixel-burned payloads** to Cloud Gemini—and re-hydrates actionable outputs locally in the browser. |
+| A contract (`.txt`) and a scanned quote (`.png`) | **Don't sign yet — fix first**, **OK to sign**, or **Walk away** |
+| | The exact money the documents disagree on, e.g. **$6,000 (12.5%)**, computed on your device |
+| | The clauses to fix, and an email written from you, ready to send |
+| | A receipt: the exact bytes that left, their SHA-256, and a ledger of every network request |
+
+## Why hybrid is the product, not a feature
+
+Masking data before a cloud call blinds the cloud: it sees `[MONEY_AMOUNT_1]` and `[MONEY_AMOUNT_3]` and cannot tell which is bigger. VeilBench uses **Split-Knowledge Reasoning**:
+
+1. **On-device:** names, amounts, dates and IDs become tokens, in the text and in the image pixels. The device also computes value-free relations: `[MONEY_AMOUNT_1] > [MONEY_AMOUNT_3] (difference 5–15%)`.
+2. **In the cloud:** Gemini reasons over tokens and relations and writes `{{DIFF:[MONEY_AMOUNT_1]-[MONEY_AMOUNT_3]}}` where an exact number matters.
+3. **On-device:** the browser fills in `$6,000 (12.5%)` and applies a transparent rule to reach the decision.
+
+The on-device first verdict (Gemini Nano) and the cloud deep audit **start at the same time**; the decision card shows the first answer and upgrades in place, with both timers visible.
 
 ---
 
-## 6 Core Technical Differentiators
+## Hybrid inference, per feature (for reviewers and AI-assisted judging)
 
-1. **Multimodal Text + HTML5 Canvas Pixel Burn-In Redaction**  
-   Inspects both text documents and scanned JPEG/PNG documents. Sensitive image regions are permanently painted over on an offscreen HTML5 `<canvas>` (`#141518` solid burn-in with monospace role labels) so underlying pixels are irreversibly destroyed before any image leaves the browser.
-2. **3-Layer Defense-in-Depth Privacy Airlock**  
-   - **Layer 1 (`ONLY_ON_DEVICE` Gemini Nano)**: Contextual semantic PII extraction (names, organizations, clinical conditions, unstructured addresses) with defensive JSON repair.  
-   - **Layer 2 (Local Deterministic Scanner)**: Millisecond local detection of emails, phone numbers, SSNs/national IDs, MRNs, IBANs/credit cards, currency amounts, IPv4 addresses, DOBs, and API keys (`AIza...`, `sk-...`, `ghp_...`).  
-   - **Layer 3 (Pre-Flight Leak Assertion Circuit Breaker)**: A pure-function gate that inspects every outbound payload milliseconds before cloud dispatch and hard-blocks escalation if any active vault value or high-confidence secret/PII pattern remains.
-3. **Cross-Document Shared Local Vault & Semantic Role Aliasing**  
-   Identical entities across multiple files (e.g., a Master Consulting Agreement `.txt` and a Schedule B Quote `.png`) map deterministically to the same semantic role alias (`[PARTY_CONTRACTOR_1]`, `[PARTY_CLIENT_1]`, `[BANK_ACCOUNT_1]`). Cloud Gemini can detect cross-document financial and legal contradictions without ever seeing real identities.
-4. **Verifiable Zero-Leak Proof & Live Payload Inspection**  
-   Before cloud escalation, the **Live Payload Inspector** displays the exact outbound text and pixel-burned PNGs alongside a **Web Crypto SHA-256 Zero-Leak Proof** (hashing raw local input vs. sanitized outbound payload). The **X-Ray Telemetry Drawer** also exposes the exact Zero-PII JSON written to Cloud Firestore.
-5. **Interactive Redline Workbench & Local Re-Hydration Action Kit**  
-   Moves beyond generic summarization: provides offline-ready traffic-light risk triage, cross-document contradiction findings, interactive diff-style redline rewrites, counterparty pushback scripts, auto-sanitized multi-turn follow-up chat, and one-click local re-hydration into a ready-to-send negotiation email or Zero-PII Markdown report.
-6. **English-First UI + On-Device Semantic Translation (`EN` ↔ `繁體中文`)**  
-   Defaults to precise English for international review, with one-click semantic translation powered by Firebase AI Logic (`PREFER_ON_DEVICE`) so users can read localized summaries offline with zero data egress.
+Every AI call goes through **Firebase AI Logic** (`firebase/ai`). File paths point to the exact call sites.
 
----
+| Feature | InferenceMode | Why | Where |
+| :--- | :--- | :--- | :--- |
+| Stage 1 · PII scan (text + image) | `ONLY_ON_DEVICE`, schema-constrained (`responseConstraint`) | Raw documents must never reach a server | `runOnDevicePiiScan` in [`src/services/aiLogicService.ts`](./src/services/aiLogicService.ts) |
+| Stage 2 · first verdict (rapid triage) | `PREFER_ON_DEVICE` (`ONLY_ON_DEVICE` offline or in Local Only) | Fast and offline on Nano; cloud fallback gets the sanitized text only | `runRapidTriage` |
+| Stage 4 · cross-document audit (2 parallel calls) | `PREFER_IN_CLOUD` + `responseSchema` | Long, multi-document reasoning on tokens and relations | `runDeepRedlineAudit` |
+| Follow-up chat | `PREFER_IN_CLOUD`, streaming | Multi-turn chat; questions are tokenized locally first | `runNegotiationChatTurn` |
+| EN → 繁中 translation | `PREFER_ON_DEVICE` | Local-first convenience | `translateTextToZhTw` |
+| Routing decision | pure function | Online state, Nano status, user mode, Remote Config policy | [`src/core/hybridRouter.ts`](./src/core/hybridRouter.ts) |
+| Decision + exact gap | none (deterministic, on-device) | Numbers never leave the device | [`src/core/decisionCard.ts`](./src/core/decisionCard.ts), [`src/core/relationalHints.ts`](./src/core/relationalHints.ts) |
+| iOS Stage 1 / cloud audit | `.systemModel()` / `.geminiModel(name:)` | Apple Foundation Models on-device; Gemini for the tokenized audit | [`ios/VeilBenchPocket`](./ios/VeilBenchPocket) |
 
-## System Architecture
-
-```mermaid
-flowchart TD
-    User["User Browser (Chrome Desktop 139+ or Any Browser)"] --> Auth["Firebase Auth (Anonymous Sign-In)"]
-    User --> RC["Firebase Remote Config (Dynamic Hybrid Thresholds & Model)"]
-    User --> Router["Pure-Function Adaptive Hybrid Router"]
-
-    Router -->|"Stage 1: ONLY_ON_DEVICE"| Airlock["3-Layer Local Privacy Airlock\n1. Gemini Nano (Multimodal + Defensive JSON)\n2. Deterministic Regex Scanner\n3. HTML5 Canvas Pixel Burn-In Redactor"]
-    Airlock --> Vault["Cross-Document Shared Local Vault\n(Semantic Role Aliases — NEVER leaves browser)"]
-
-    Router -->|"Stage 2: PREFER_ON_DEVICE (Works Offline)"| NanoTriage["Firebase AI Logic -> Gemini Nano Rapid Triage\n+ EN <-> zh-TW Semantic Translation"]
-    NanoTriage --> FSLocal["Cloud Firestore (persistentLocalCache — Zero-PII)"]
-
-    Airlock --> Gate["Human-in-the-Loop Privacy Gate\n+ Layer 3 Pre-Flight Circuit Breaker\n+ Live Payload Inspector & SHA-256 Proof"]
-    Gate -->|"Stage 4: PREFER_IN_CLOUD"| AppCheck["Firebase App Check (reCAPTCHA Enterprise)"]
-    AppCheck --> CloudGemini["Firebase AI Logic -> Cloud Gemini\n(Cross-Doc Audit + Redline Diff + Playbook + Multi-Turn Chat)"]
-
-    CloudGemini --> Rehydrate["On-Device Re-Hydration & Action Kit\n(Ready-to-Send Email / Zero-PII Markdown Report)"]
-    Rehydrate --> FSLocal
-    FSLocal -->|"Auto Sync When Online"| FSCloud["Cloud Firestore (Sanitized History)"]
-    User -.-> Perf["Firebase Performance & Zero-PII Analytics"]
-    User -.-> Hosting["Firebase Hosting (Production HTTPS Live URL)"]
-```
+**About `window.LanguageModel`:** the app reads Chrome's Prompt API global **only** to call `availability()` in `detectChromeNanoStatus`, so it can show setup help when Nano is missing. It never creates a session or prompts the model directly; all inference uses `getGenerativeModel(...)` from `firebase/ai`. This is enforced by a test: [`tests/core/aiLogicOnly.test.ts`](./tests/core/aiLogicOnly.test.ts).
 
 ---
 
-## Firebase Services Used (8 Integrated Services)
+## Privacy you can check yourself
 
-| # | Firebase Service | Role in VeilBench |
-| :-: | :--- | :--- |
-| 1 | **Firebase AI Logic (`firebase/ai`)** | Sole AI inference interface (`GoogleAIBackend`) orchestrating `ONLY_ON_DEVICE`, `PREFER_ON_DEVICE`, and `PREFER_IN_CLOUD` with real-time `inferenceSource` telemetry (`ON_DEVICE` vs. `IN_CLOUD`). |
-| 2 | **Firebase App Check (`firebase/app-check`)** | Protects cloud inference and backend resources via `ReCaptchaV3Provider` or `ReCaptchaEnterpriseProvider` with automatic token refresh and live status reporting in the X-Ray Telemetry bar. |
-| 3 | **Cloud Firestore (`firebase/firestore`)** | Configured with `persistentLocalCache` and `persistentMultipleTabManager` for true offline-first persistence and automatic reconnect sync. Security Rules enforce per-UID isolation and reject raw PII fields. |
-| 4 | **Firebase Authentication (`firebase/auth`)** | Anonymous Sign-In provides zero-friction access for reviewers while strictly isolating each user's sanitized session history by UID. |
-| 5 | **Firebase Remote Config (`firebase/remote-config`)** | Dynamically tunes hybrid routing parameters (`max_on_device_chars`, `cloud_model_name`, `strict_pii_block_enabled`) without redeploying the app. |
-| 6 | **Firebase Performance Monitoring (`firebase/performance`)** | Records real custom latency traces comparing `ON_DEVICE` vs. `IN_CLOUD` execution paths. |
-| 7 | **Firebase Analytics (`firebase/analytics`)** | Logs strictly non-PII architectural routing telemetry (task type, inference source, and cloud-call savings counts only). |
-| 8 | **Firebase Hosting (`firebase.json`)** | Serves the production HTTPS SPA with immutable static asset caching headers. |
+- **3-layer airlock.** Layer 1: Gemini Nano finds contextual entities. Layer 2: deterministic rules catch structured identifiers (emails, phones, SSNs, TW IDs, MRNs, IBANs, money, dates, API keys) and defined parties. Layer 3: a pre-flight circuit breaker blocks any request that still contains a vault value or a high-risk pattern.
+- **Pixel burn-in.** Sensitive regions of scans are painted over on a canvas before any image leaves; you can also draw boxes by hand.
+- **Verify it yourself.** The Payload Inspector shows the exact outbound text. Download it and run `shasum -a 256 veilbench-outbound-payload.txt`; the digest equals the hash on screen. **Try to leak** un-redacts one token so you can watch Layer 3 block the request.
+- **Network egress ledger.** Every cross-origin request the page sends is recorded (service, host, bytes, SHA-256; never the body). For AI Logic requests the ledger confirms the body carries text that passed Layer 3. Export everything as `veilbench-outbound.json`.
+- **Zero-PII storage.** Firestore stores tokens only; `firestore.rules` allows a fixed field list per anonymous user.
+
+Detection is best effort, which is why every outbound byte is shown and checked before sending. See [SECURITY.md](./SECURITY.md) for the threat model and known limitations.
+
+## Firebase services
+
+| Service | How VeilBench uses it |
+| :--- | :--- |
+| Firebase AI Logic | All inference: Gemini Nano (web), Apple Foundation Models (iOS), Gemini in the cloud; `inferenceSource` shown per call |
+| App Check | reCAPTCHA Enterprise (web) and App Attest (iOS), limited-use tokens for replay protection |
+| Remote Config | Cloud model, fallback chain (`gemini-3.5-flash-lite` → `gemini-3.6-flash`), on-device size limit, `routing_policy` (e.g. medical → on-device only); refetch live in the X-Ray drawer |
+| Cloud Firestore | `persistentLocalCache`: sessions save offline and sync later; Zero-PII only |
+| Authentication | Anonymous sign-in, per-user isolation |
+| Performance Monitoring | Custom traces per stage (on-device vs cloud latency) |
+| Analytics | Non-PII routing events (source, status, cache use) |
+| Hosting | Production site |
+
+## Other ways in
+
+- **Chrome extension** ([`extension/`](./extension)): select text on any page → right-click **Check with VeilBench**. The page receives it through `window.postMessage({ type: 'veilbench.intake.v1' })`, masks it locally, and asks before anything goes to the cloud. Install with `chrome://extensions` → Developer mode → **Load unpacked** → `extension/`.
+- **WebMCP tools** (Chrome origin trial): `veilbench_check_contract` and `veilbench_get_decision`. Results contain tokens only; exact amounts are shown to the user on-device and never returned to an agent. Source: [`src/integrations/agentSurface.ts`](./src/integrations/agentSurface.ts).
+- **iOS:** see [`ios/README.md`](./ios/README.md).
+
+## Leak benchmark
+
+A fixed set of fictional documents with known identifiers runs in CI and reports what was caught and missed for rules only, rules + Layer 3, and Nano + rules. Results: [`docs/BENCHMARK.md`](./docs/BENCHMARK.md).
 
 ---
 
-## Enabling Chrome Built-in Gemini Nano (Chrome Desktop 139+)
+## Run it
 
-VeilBench gracefully degrades in non-Nano browsers (Safari, Firefox, mobile, or Chrome without flags) using its Layer 2 Deterministic Shield and Firebase AI Logic cloud fallback. To experience full **on-device, zero-cost, offline Gemini Nano inference**:
+Requirements: Node.js 20+, npm 10+, and a Firebase project with AI Logic (Gemini Developer API), Anonymous Auth, Firestore, Remote Config and App Check.
 
-1. Use **Chrome Desktop 139+** (with at least ~22 GB free disk space for the built-in model).
-2. Open `chrome://flags/#gemma4-for-built-in-ai` (shown as **Gemma 4 for Built-in AI**) and set it to **Enabled** (Gemini Nano 4 on-device model).
-3. Open `chrome://flags/#prompt-api-for-gemini-nano` and set it to **Enabled**.
-4. Open `chrome://flags/#prompt-api-for-gemini-nano-multimodal-input` and set it to **Enabled** (enables local image inspection).
-5. Relaunch Chrome and verify model status at `chrome://on-device-internals`.
-6. Reload VeilBench—the top bar indicator will switch to **Nano Ready**.
-
----
-
-## Local Development & App Check Setup
-
-### Prerequisites
-- Node.js `20+` and npm `10+`
-- A Firebase project with **Firebase AI Logic (Gemini Developer API)**, **Anonymous Authentication**, **Cloud Firestore**, **Remote Config**, and **App Check** enabled.
-
-### 1. Install Dependencies
 ```bash
 npm install
-```
-
-### 2. Configure Environment Variables
-Copy the template and fill in your Firebase Web App credentials (never commit `.env.local`):
-```bash
-cp .env.example .env.local
-```
-
-Required variables in `.env.local`:
-```env
-VITE_FIREBASE_API_KEY=...
-VITE_FIREBASE_AUTH_DOMAIN=...
-VITE_FIREBASE_PROJECT_ID=...
-VITE_FIREBASE_STORAGE_BUCKET=...
-VITE_FIREBASE_MESSAGING_SENDER_ID=...
-VITE_FIREBASE_APP_ID=...
-VITE_FIREBASE_MEASUREMENT_ID=...
-
-# Firebase App Check ('enterprise' in production, 'v3' also supported)
-VITE_APP_CHECK_PROVIDER=enterprise
-VITE_RECAPTCHA_V3_SITE_KEY=...
-
-# Local development ONLY — set to false in production builds
-VITE_APP_CHECK_DEBUG_TOKEN=false
-```
-
-> **App Check Local Development**: Set `VITE_APP_CHECK_DEBUG_TOKEN=true` locally, copy the debug token printed in the browser DevTools console, and register it under **Firebase Console → App Check → Apps → Manage debug tokens**. Keep `VITE_APP_CHECK_DEBUG_TOKEN=false` for production Firebase Hosting builds.
-
-### 3. Run Locally, Test, and Build
-```bash
-# Start Vite dev server
+cp .env.example .env.local   # fill in your Firebase web config; never commit it
 npm run dev
-
-# Run TypeScript typecheck
-npm run typecheck
-
-# Run pure-function core engine unit tests (157 tests across 12 suites)
-npm test
-
-# Build production bundle
-npm run build
 ```
 
-### 4. Deploy to Firebase Hosting & Firestore Rules
+```bash
+npm run verify               # typecheck + unit tests + production build
+```
+
 ```bash
 firebase deploy --only firestore:rules,hosting
 ```
 
----
+For App Check during local development set `VITE_APP_CHECK_DEBUG_TOKEN=true`, register the printed debug token in the Firebase Console, and keep it `false` in production builds.
 
-## Project Structure
+### Enable Gemini Nano in Chrome
+
+Tested on Chrome 158 (macOS). Without Nano the app runs in **cloud-safe mode**: masking uses local rules and the quick check runs in the cloud on tokens only.
+
+1. `chrome://flags/#gemma4-for-built-in-ai` → **Enabled**
+2. `chrome://flags/#prompt-api-for-gemini-nano` → **Enabled**
+3. `chrome://flags/#prompt-api-for-gemini-nano-multimodal-input` → **Enabled**
+4. Relaunch Chrome. The model downloads in the background (about 6 minutes in our test); the header then shows **Gemini Nano Ready**.
+
+## Project structure
 
 ```text
 src/
-├── types/          # Locked TypeScript contracts (hybrid, privacy, audit)
-├── config/         # Firebase 8-service bootstrap & Remote Config loader
-├── core/           # 100% pure-function privacy & hybrid routing engine (0 UI/SDK deps)
-│   ├── hybridRouter.ts
-│   ├── piiShield.ts
-│   ├── preFlightGuard.ts
-│   ├── proofGenerator.ts
-│   └── canvasRedactor.ts
-├── services/       # Firebase AI Logic (firebase/ai) & Zero-PII Firestore persistence
-├── data/           # 3 built-in realistic sample bundles (with client-side Canvas PNG scans)
-├── state/          # Unified workbench state & hybrid orchestration store
-└── components/     # Swiss-precision security workbench UI (.stitch/DESIGN.md)
-tests/core/         # 157 Vitest unit tests: routing, redaction, circuit breaker, SHA-256, resilience, split-knowledge, demo cache
+├── core/           # Pure functions: router, PII shield, Layer 3, relations, decision card, proofs
+├── services/       # Firebase AI Logic calls, Firestore sessions, egress ledger
+├── integrations/   # Chrome extension intake + WebMCP tools
+├── state/          # Workbench store: stages, parallel hybrid run, cache fallback
+├── components/     # UI
+└── data/           # Fictional sample bundles and recorded demo results
+ios/                # VeilBench Pocket (SwiftUI + Firebase AI Logic)
+tests/              # Vitest unit tests and Firestore rules tests
 ```
 
----
+## Built during the submission period
 
-## Security & Privacy
-
-See [SECURITY.md](./SECURITY.md) for the complete threat model, 3-Layer Zero-Leak Airlock specification, Firestore Zero-PII enforcement guarantees, and responsible disclosure guidelines.
+The public history starts on 2026-11-26; earlier work was done in a local workspace and landed as the first public commit. Since then every change is committed as it is made, so the history shows the real order of work (decision card, parallel hybrid, egress ledger, iOS app, security fixes). AI coding assistants (Google Antigravity, OpenAI Codex, Anthropic Claude) were used for development; runtime inference uses Firebase AI Logic only.
 
 ## License
 
-Licensed under the **Apache License 2.0**. See [LICENSE](./LICENSE) for full terms.
+Apache License 2.0. See [LICENSE](./LICENSE).

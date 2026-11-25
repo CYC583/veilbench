@@ -19,7 +19,7 @@ The same airlock also protects clinical lab panels and SaaS renewal notices (bot
 
 We realized this problem **can only be solved by Hybrid AI**:
 - **Cloud-only AI fails on privacy, cost, and offline reliability.** You should never upload raw SSNs, unredacted scans, or leaked API keys to the cloud just to get a document reviewed—and you shouldn't lose access to rapid risk triage when reviewing a contract on a flight.
-- **On-device-only AI fails on deep, multi-document reasoning.** Chrome's built-in Gemini Nano is fast, free, and 100% private, but its smaller context window and single-turn focus cannot reliably cross-reference a multi-page Master Services Agreement against an attached quote scan, synthesize surgical redline diffs, and run multi-turn negotiation coaching.
+- **On-device-only AI fails on deep, multi-document reasoning.** Chrome's built-in Gemini Nano is fast, free, and keeps data on the device, but its smaller context window and single-turn focus cannot reliably cross-reference a multi-page Master Services Agreement against an attached quote scan, synthesize surgical redline diffs, and run multi-turn negotiation coaching.
 
 Existing privacy-wrapper demos only do naive text search-and-replace (`[PII_1]`) on single text documents—leaving scanned images unprotected, breaking cross-document entity relationships, and offering no cryptographic proof that a leak didn't slip through. We built **VeilBench** to turn Hybrid AI into a verifiable, clinical-grade **Zero-Leak Document Auditor & Negotiation Workbench**.
 
