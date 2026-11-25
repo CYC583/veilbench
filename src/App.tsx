@@ -224,10 +224,36 @@ export function App() {
           </div>
         )}
 
-        {(state.stage === 'scanning_pii' || state.stage === 'translating' || state.stage === 'running_parallel') && (
-          <div className="flex items-center gap-2.5 rounded-md border border-[#0F766E]/30 bg-[#F0FDFA] px-4 py-2.5 font-mono text-[12px] text-[#0F766E]">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-[#0F766E]" />
-            <span>{localizeRuntimeMessage(state.stageMessage, state.locale)}</span>
+        {state.stage !== 'idle' && (
+          <div className="flex items-center justify-between gap-2.5 rounded-md border border-[#0F766E]/30 bg-[#F0FDFA] px-4 py-2.5 font-mono text-[12px] text-[#0F766E]">
+            <span className="flex min-w-0 items-center gap-2.5">
+              <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-[#0F766E]" />
+              <span className="min-w-0 break-words">{localizeRuntimeMessage(state.stageMessage, state.locale)}</span>
+            </span>
+            {state.stage !== 'scanning_pii' && (
+              <button
+                type="button"
+                data-testid="cancel-run"
+                onClick={actions.cancelCurrentRun}
+                className="inline-flex min-h-[40px] shrink-0 items-center gap-1 rounded-md border border-[#0F766E]/40 bg-[#FFFFFF] px-3 font-sans text-[12.5px] font-medium text-[#0F766E] sm:min-h-[30px]"
+              >
+                <Square className="h-3 w-3" />
+                {isZh ? '取消' : 'Cancel'}
+              </button>
+            )}
+          </div>
+        )}
+
+        {state.cancelledNotice && state.stage === 'idle' && (
+          <div className="flex items-start justify-between gap-3 rounded-md border border-[#E2E5EA] bg-[#FFFFFF] px-4 py-2.5 text-[13px] text-[#141518]">
+            <span>
+              {isZh
+                ? '已取消。沒有再送出任何內容；需要時可以重新執行。'
+                : 'Cancelled. Nothing more was sent; run it again whenever you are ready.'}
+            </span>
+            <button type="button" onClick={actions.dismissCancelledNotice} aria-label={isZh ? '關閉' : 'Dismiss'}>
+              <X className="h-4 w-4" />
+            </button>
           </div>
         )}
 

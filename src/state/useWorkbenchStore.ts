@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   ActualInferenceSource,
   NanoAvailabilityStatus,
@@ -129,6 +129,8 @@ export interface WorkbenchState {
   parallelRun: ParallelRunState | null;
   triageRunning: boolean;
   deepRunning: boolean;
+  /** The user cancelled the last request (shown as a neutral note, not an error). */
+  cancelledNotice: boolean;
 }
 
 export interface ParallelRunState {
@@ -152,6 +154,13 @@ export interface CloudFailureState {
   pendingQuestion?: string;
   /** Stage 4 half that failed while the other half succeeded. */
   partialPart?: 'analysis' | 'playbook';
+}
+
+/** True when a request stopped because the user cancelled it (never shown as an error). */
+function isAbortError(err: unknown): boolean {
+  if (err instanceof CloudStageError) return (err.failure.kind as string) === 'aborted';
+  const e = err as { name?: string; kind?: string } | null;
+  return e?.name === 'AbortError' || e?.kind === 'aborted';
 }
 
 /** Strips endpoint URLs and project paths from any non-classified error before it reaches the UI. */
@@ -292,6 +301,28 @@ export function useWorkbenchStore() {
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [cloudFailure, setCloudFailure] = useState<CloudFailureState | null>(null);
   const [parallelRun, setParallelRun] = useState<ParallelRunState | null>(null);
+  /** The in-flight cloud/on-device request, so it can be cancelled or superseded. */
+  const runControllerRef = useRef<AbortController | null>(null);
+  const [cancelledNotice, setCancelledNotice] = useState(false);
+  /** Aborts any in-flight request and starts a fresh signal for the next one. */
+  const beginRun = useCallback((): AbortSignal => {
+    runControllerRef.current?.abort();
+    const controller = new AbortController();
+    runControllerRef.current = controller;
+    setCancelledNotice(false);
+    return controller.signal;
+  }, []);
+  const abortRun = useCallback(() => {
+    runControllerRef.current?.abort();
+    runControllerRef.current = null;
+  }, []);
+  /** Returns to idle only if this run is still the current one (a newer run keeps its own stage). */
+  const settleRun = useCallback((signal: AbortSignal) => {
+    if (runControllerRef.current && runControllerRef.current.signal !== signal) return;
+    runControllerRef.current = null;
+    setStage('idle');
+    setStageMessage('');
+  }, []);
   const [lastRouterDecision, setLastRouterDecision] = useState<RouterDecision | null>(null);
   const [lastFirestorePayload, setLastFirestorePayload] =
     useState<SanitizedFirestoreSession | null>(null);
@@ -483,6 +514,7 @@ export function useWorkbenchStore() {
       options?: { replaceWorkspace?: boolean }
     ) => {
       setErrorBanner(null);
+      abortRun(); // new or changed documents make any in-flight answer stale
       setStage('scanning_pii');
       setStageMessage('Layer 1/2/3: Scanning PII strictly on-device & locking Local Vault...');
 
@@ -818,7 +850,9 @@ export function useWorkbenchStore() {
   /**
    * Stage 2: Rapid Offline-Ready Triage (PREFER_ON_DEVICE).
    */
-  const executeRapidTriage = useCallback(async (opts?: { inParallel?: boolean }): Promise<TriageResult | null> => {
+  const executeRapidTriage = useCallback(async (
+    opts?: { inParallel?: boolean; signal?: AbortSignal }
+  ): Promise<TriageResult | null> => {
     const inParallel = Boolean(opts?.inParallel);
     if (documents.length === 0) return null;
     setErrorBanner(null);
@@ -850,18 +884,22 @@ export function useWorkbenchStore() {
         : 'Stage 2: Running rapid risk triage via Firebase AI Logic (Sanitized Payload)...'
     );
 
+    const signal = opts?.signal ?? beginRun();
     try {
       const { triage: result, telemetry: evt } = await runRapidTriage({
+        signal,
         sanitizedText: sanitizedCombined,
         mode: decision.recommendedMode,
         remoteConfig,
         onRetryNotice: inParallel ? undefined : setStageMessage,
       });
+      if (signal.aborted) return null; // superseded or cancelled: never show a stale answer
       setTriage(result);
       pushTelemetry(evt);
       if (!inParallel) await persistZeroPiiSession(result, deepAudit);
       return result;
     } catch (err) {
+      if (isAbortError(err)) return null;
       reportStageError(
         err,
         'triage',
@@ -869,12 +907,11 @@ export function useWorkbenchStore() {
       );
       return null;
     } finally {
-      if (!inParallel) {
-        setStage('idle');
-        setStageMessage('');
-      }
+      if (!inParallel) settleRun(signal);
     }
   }, [
+    beginRun,
+    settleRun,
     deepAudit,
     documents,
     isOnline,
@@ -893,7 +930,7 @@ export function useWorkbenchStore() {
    */
   const executeDeepAudit = useCallback(async (
     retryOnly?: 'analysis' | 'playbook',
-    opts?: { inParallel?: boolean }
+    opts?: { inParallel?: boolean; signal?: AbortSignal }
   ): Promise<DeepAuditResult | null> => {
     const inParallel = Boolean(opts?.inParallel);
     if (documents.length === 0) return null;
@@ -953,8 +990,10 @@ export function useWorkbenchStore() {
         : 'Stage 4: Synthesizing Interactive Redline Diff & Negotiation Playbook via Cloud Gemini...'
     );
 
+    const deepSignal = opts?.signal ?? beginRun();
     try {
       const { audit: fresh, telemetry: events, partialFailure } = await runDeepRedlineAudit({
+        signal: deepSignal,
         prompt: payload,
         documents,
         mode: decision.recommendedMode,
@@ -985,6 +1024,7 @@ export function useWorkbenchStore() {
       const golden = activeSamplePackId ? SAMPLE_GOLDEN_AUDITS[activeSamplePackId] : undefined;
       const finalAudit =
         partialFailure && golden ? fillFromGolden(audit, golden, [partialFailure.part]) : audit;
+      if (deepSignal.aborted) return null; // superseded or cancelled: never show a stale answer
       if (partialFailure && golden) logCacheUse([partialFailure.part], golden);
       setDeepAudit(finalAudit);
       events.forEach(pushTelemetry);
@@ -1001,6 +1041,8 @@ export function useWorkbenchStore() {
       if (!inParallel) await persistZeroPiiSession(triage, finalAudit);
       return finalAudit;
     } catch (err) {
+      // A cancel is the user's choice: no error card and no recorded-result fallback.
+      if (isAbortError(err) || deepSignal.aborted) return null;
       const golden = activeSamplePackId ? SAMPLE_GOLDEN_AUDITS[activeSamplePackId] : undefined;
       let fallback: DeepAuditResult | null = null;
       if (err instanceof CloudStageError && golden) {
@@ -1018,12 +1060,11 @@ export function useWorkbenchStore() {
       );
       return fallback;
     } finally {
-      if (!inParallel) {
-        setStage('idle');
-        setStageMessage('');
-      }
+      if (!inParallel) settleRun(deepSignal);
     }
   }, [
+    beginRun,
+    settleRun,
     activeSamplePackId,
     deepAudit,
     documents,
@@ -1049,16 +1090,17 @@ export function useWorkbenchStore() {
     if (documents.length === 0) return;
     setStage('running_parallel');
     setStageMessage('Stage 2 + 4: on-device first verdict and cloud deep audit running in parallel...');
+    const signal = beginRun();
     const started = performance.now();
     setParallelRun({ startedAt: started, triageMs: null, deepMs: null, triageSource: null, deepSource: null });
     const elapsed = () => Math.max(1, Math.round(performance.now() - started));
     try {
       const [tri, deep] = await Promise.all([
-        executeRapidTriage({ inParallel: true }).then((r) => {
+        executeRapidTriage({ inParallel: true, signal }).then((r) => {
           setParallelRun((p) => p && { ...p, triageMs: elapsed(), triageSource: r?.inferenceSource ?? null });
           return r;
         }),
-        executeDeepAudit(undefined, { inParallel: true }).then((r) => {
+        executeDeepAudit(undefined, { inParallel: true, signal }).then((r) => {
           setParallelRun((p) => p && { ...p, deepMs: elapsed(), deepSource: r?.inferenceSource ?? null });
           return r;
         }),
@@ -1067,12 +1109,12 @@ export function useWorkbenchStore() {
         triage_ok: Boolean(tri),
         deep_ok: Boolean(deep),
       });
-      if (tri || deep) await persistZeroPiiSession(tri ?? triage, deep ?? deepAudit);
+      if (signal.aborted) setParallelRun(null);
+      else if (tri || deep) await persistZeroPiiSession(tri ?? triage, deep ?? deepAudit);
     } finally {
-      setStage('idle');
-      setStageMessage('');
+      settleRun(signal);
     }
-  }, [deepAudit, documents.length, executeDeepAudit, executeRapidTriage, persistZeroPiiSession, triage]);
+  }, [settleRun, beginRun, deepAudit, documents.length, executeDeepAudit, executeRapidTriage, persistZeroPiiSession, triage]);
 
   /**
    * Multi-Turn Follow-Up Chat: sanitizes user input locally, sends sanitized turn, re-hydrates response locally.
@@ -1135,9 +1177,11 @@ export function useWorkbenchStore() {
 
       setStage('sending_chat');
       setStageMessage('Sending sanitized follow-up & re-hydrating response locally...');
+      const chatSignal = beginRun();
 
       try {
         const res = await runNegotiationChatTurn({
+          signal: chatSignal,
           sanitizedContext,
           history: chatHistory,
           sanitizedUserQuestion: sanitizedQuestion,
@@ -1159,13 +1203,14 @@ export function useWorkbenchStore() {
       } catch (err) {
         // Roll back the unanswered user turn; Retry resends the same question.
         setChatHistory(chatHistory);
-        reportStageError(err, 'chat', 'Follow-up chat request failed.', trimmed);
+        if (!isAbortError(err)) reportStageError(err, 'chat', 'Follow-up chat request failed.', trimmed);
       } finally {
-        setStage('idle');
-        setStageMessage('');
+        settleRun(chatSignal);
       }
     },
     [
+      beginRun,
+      settleRun,
       chatHistory,
       documents,
       isOnline,
@@ -1205,6 +1250,7 @@ export function useWorkbenchStore() {
 
     setStage('translating');
     setStageMessage('Translating audit insights to Traditional Chinese (PREFER_ON_DEVICE)...');
+    const translateSignal = beginRun();
 
     try {
       const nextCache: TranslatedAuditCache = {
@@ -1218,6 +1264,7 @@ export function useWorkbenchStore() {
 
       if (triage && !nextCache.triageHeadline) {
         const res = await translateTextToZhTw({
+          signal: translateSignal,
           englishText: triage.headline,
           remoteConfig,
         });
@@ -1228,6 +1275,7 @@ export function useWorkbenchStore() {
 
       if (deepAudit && !nextCache.executiveSummary) {
         const res = await translateTextToZhTw({
+          signal: translateSignal,
           englishText: deepAudit.playbook.executiveSummary,
           remoteConfig,
         });
@@ -1236,14 +1284,15 @@ export function useWorkbenchStore() {
         pushTelemetry(res.telemetry);
       }
 
-      setTranslatedCache(nextCache);
+      if (!translateSignal.aborted) setTranslatedCache(nextCache);
     } catch {
       // Keep English content visible gracefully if translation fails
     } finally {
-      setStage('idle');
-      setStageMessage('');
+      settleRun(translateSignal);
     }
   }, [
+    beginRun,
+    settleRun,
     deepAudit,
     isOnline,
     locale,
@@ -1293,7 +1342,16 @@ export function useWorkbenchStore() {
     logHybridAnalyticsEvent('sessions_deleted', { count: targets.length - failed.length, failed: failed.length });
   }, [savedSessions]);
 
+  /** User pressed Cancel: stop the in-flight request; nothing more is sent and no error is shown. */
+  const cancelCurrentRun = useCallback(() => {
+    if (!runControllerRef.current) return;
+    abortRun();
+    setCancelledNotice(true);
+    logHybridAnalyticsEvent('run_cancelled', { stage });
+  }, [abortRun, stage]);
+
   const clearWorkspace = useCallback(() => {
+    abortRun();
     setCloudFailure(null);
     setActiveSamplePackId(null);
     setSessionId(makeSessionId());
@@ -1396,6 +1454,7 @@ export function useWorkbenchStore() {
       parallelRun,
       triageRunning,
       deepRunning,
+      cancelledNotice,
     } satisfies WorkbenchState,
     combinedSanitizedPayload,
     actions: {
@@ -1424,6 +1483,8 @@ export function useWorkbenchStore() {
       restoreSessionFromHistory,
       clearWorkspace,
       deleteSessions,
+      cancelCurrentRun,
+      dismissCancelledNotice: () => setCancelledNotice(false),
       rehydrateLocal,
     },
   };
