@@ -1,7 +1,7 @@
 # VeilBench — 2:45 Demo Video Production Script & English Subtitles
 
 - **Target Runtime:** `2:45` (165 seconds — strictly under the 3:00 hard limit)
-- **Format:** 1920×1080 (16:9), 30/60fps, Chrome Desktop 139+ with Gemini Nano enabled (`Gemini Nano Ready` emerald badge visible in Top Command Bar)
+- **Format:** 1920×1080 (16:9), 30/60fps, Chrome Desktop 158 with the "Gemma 4 for Built-in AI" flag enabled and chrome://on-device-internals showing the model ready (`Gemini Nano Ready` emerald badge visible in Top Command Bar)
 - **Audio / Captions:** Clear English voiceover + burned-in / YouTube English subtitles (`.srt` ready below)
 - **Pre-Recording Checklist (30 seconds before hitting Record):**
   1. Open deployed **Firebase Hosting Live URL** (HTTPS) in Chrome Desktop with Gemini Nano downloaded (`chrome://on-device-internals` verified).

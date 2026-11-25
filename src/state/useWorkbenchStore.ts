@@ -30,6 +30,7 @@ import {
   createEmptyVault,
   decideHybridRoute,
   generateZeroLeakProof,
+  sha256Hex,
   parseNanoEntitiesDefensive,
   redactImageRegionsOnCanvas,
   rehydrateWithLocalMath,
@@ -43,6 +44,7 @@ import {
 import {
   ensureAnonymousUser,
   getFirebaseServices,
+  logHybridAnalyticsEvent,
   verifyAppCheckToken,
   type AppCheckUiStatus,
 } from '../config/firebase';
@@ -283,6 +285,29 @@ export function useWorkbenchStore() {
     setTelemetry((prev) => [evt, ...prev].slice(0, 60));
   }, []);
 
+  /** Records an honest "cached" event whenever a recorded demo result is shown instead of a live one. */
+  const logCacheUse = useCallback(
+    (parts: AuditPart[], golden: GoldenAuditRecord) => {
+      pushTelemetry({
+        id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        timestamp: new Date().toISOString(),
+        task: 'cross_doc_contradiction',
+        requestedMode: 'prefer_in_cloud',
+        actualSource: 'IN_CLOUD',
+        latencyMs: 0,
+        inputChars: 0,
+        piiInterceptedCount: 0,
+        status: 'cached',
+        errorKind: 'live_call_failed',
+        cloudModelUsed: parts.includes('analysis') ? golden.analysisModel : golden.playbookModel,
+        appCheckStatus: 'offline_bypass',
+        note: `Recorded demo result shown for ${parts.join(' + ')} (recorded ${golden.recordedAt.slice(0, 10)}); live call failed.`,
+      });
+      logHybridAnalyticsEvent('cache_fallback_used', { parts: parts.join('+') });
+    },
+    [pushTelemetry]
+  );
+
   /** Routes classified cloud failures to the inline retry card + Inference Log; other errors to the banner. */
   const reportStageError = useCallback(
     (err: unknown, action: CloudAction, fallback: string, pendingQuestion?: string) => {
@@ -359,12 +384,21 @@ export function useWorkbenchStore() {
       const assertion = imageLeaks.length
         ? { ...textAssertion, passed: false, leaks: [...textAssertion.leaks, ...imageLeaks] }
         : textAssertion;
-      const proof = await generateZeroLeakProof({
+      const outboundImageHashes = await Promise.all(
+        nextDocs
+          .filter((d) => d.redactedImageDataUrl)
+          .map(async (d) => ({
+            title: redactWithVault(d.title, nextVault),
+            sha256: await sha256Hex(d.redactedImageDataUrl!),
+          }))
+      );
+      const textProof = await generateZeroLeakProof({
         rawCombinedText: rawCombined,
         sanitizedCombinedText: sanitizedCombined,
         vault: nextVault,
         preFlight: assertion,
       });
+      const proof = outboundImageHashes.length ? { ...textProof, outboundImageHashes } : textProof;
       setPreFlight(assertion);
       setZeroLeakProof(proof);
       setOutboundPayload(sanitizedCombined);
@@ -799,6 +833,7 @@ export function useWorkbenchStore() {
         appCheckStatus: 'offline_bypass',
         note: `BLOCKED by Layer 3: ${assertion?.leaks.length ?? 1} leak(s); nothing left the device.`,
       });
+      logHybridAnalyticsEvent('layer3_blocked', { leaks: assertion?.leaks.length ?? 1 });
       setErrorBanner(
         `Layer 3 Pre-Flight Circuit Breaker BLOCKED cloud escalation: ${assertion?.leaks.length ?? 1} unredacted leak(s) detected.`
       );
@@ -867,6 +902,7 @@ export function useWorkbenchStore() {
       const golden = activeSamplePackId ? SAMPLE_GOLDEN_AUDITS[activeSamplePackId] : undefined;
       const finalAudit =
         partialFailure && golden ? fillFromGolden(audit, golden, [partialFailure.part]) : audit;
+      if (partialFailure && golden) logCacheUse([partialFailure.part], golden);
       setDeepAudit(finalAudit);
       events.forEach(pushTelemetry);
       if (partialFailure) {
@@ -885,9 +921,9 @@ export function useWorkbenchStore() {
       if (err instanceof CloudStageError && golden) {
         // Every model failed: show the recorded real result for this built-in sample, clearly badged,
         // while the retry card below keeps the live path one click away.
-        setDeepAudit((prev) =>
-          fillFromGolden(retryOnly ? prev : null, golden, retryOnly ? [retryOnly] : ['analysis', 'playbook'])
-        );
+        const parts: AuditPart[] = retryOnly ? [retryOnly] : ['analysis', 'playbook'];
+        setDeepAudit((prev) => fillFromGolden(retryOnly ? prev : null, golden, parts));
+        logCacheUse(parts, golden);
       }
       reportStageError(
         err,

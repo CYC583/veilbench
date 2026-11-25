@@ -76,7 +76,7 @@ export interface TelemetryEvent {
   piiInterceptedCount: number;
   cloudModelUsed?: string;
   /** Outcome of the event; failures and Layer 3 blocks are logged too, never only successes. */
-  status?: 'ok' | 'error' | 'blocked';
+  status?: 'ok' | 'error' | 'blocked' | 'cached';
   errorKind?: string;
   /** Metered cloud tokens from response.usageMetadata (output includes thinking tokens). */
   tokens?: { prompt: number; output: number; total: number };

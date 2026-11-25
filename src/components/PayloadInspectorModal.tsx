@@ -188,6 +188,16 @@ export function PayloadInspectorModal({
                       }
                       className="max-h-40 w-full rounded object-contain"
                     />
+                    {(() => {
+                      const hash = zeroLeakProof?.outboundImageHashes?.find(
+                        (h) => h.title === redactWithVault(doc.title, vault)
+                      )?.sha256;
+                      return hash ? (
+                        <p className="mt-1 break-all font-mono text-[10px] text-[#5C626E]">
+                          SHA-256 {hash}
+                        </p>
+                      ) : null;
+                    })()}
                   </div>
                 ))}
               </div>
@@ -218,7 +228,7 @@ export function PayloadInspectorModal({
                   : 'Copy the payload above, then run this in a terminal — the digest must equal the outbound hash.'}
               </p>
               <code className="mt-1.5 block break-all rounded bg-[#FFFFFF] px-2 py-1 font-mono text-[11.5px] text-[#141518]">
-                pbpaste | shasum -a 256
+                shasum -a 256 veilbench-outbound-payload.txt
               </code>
               <div className="mt-2 flex flex-wrap gap-2">
                 <button
@@ -237,6 +247,23 @@ export function PayloadInspectorModal({
                   {copiedPayload
                     ? isZh ? '已複製送出內容' : 'Payload copied'
                     : isZh ? '複製送出內容' : 'Copy exact payload'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Exact bytes of the outbound envelope (UTF-8, no trailing newline) for offline hashing.
+                    const url = URL.createObjectURL(
+                      new Blob([combinedSanitizedPayload], { type: 'text/plain;charset=utf-8' })
+                    );
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'veilbench-outbound-payload.txt';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="inline-flex min-h-[44px] items-center rounded-md border border-[#0F766E]/40 bg-[#FFFFFF] px-3 text-[12px] font-medium text-[#0F766E] sm:min-h-[32px]"
+                >
+                  {isZh ? '下載送出內容' : 'Download payload'}
                 </button>
                 {onTryLeak && passed && (
                   <button

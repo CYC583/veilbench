@@ -40,6 +40,10 @@ export const DEEP_AUDIT_TASK_PLAYBOOK = [
   '"counterpartyPushback": exactly 2 items, each field under 50 words;',
   '"readyToSendEmailSanitized": a polite, firm email under 160 words that keeps placeholder tokens and writes',
   'money differences as {{DIFF:[TOKEN_A]-[TOKEN_B]}}.',
+  'Perspective: the USER is the person reviewing these documents — in a contract, the contractor',
+  '([PARTY_CONTRACTOR_1]); otherwise the person or account owner the documents are about. Write the email FROM',
+  'the user TO the counterparty or its representative, argue for the user\'s interests, and sign it with the',
+  'user\'s token (e.g. [PARTY_CONTRACTOR_1]) — never with the counterparty\'s token.',
 ].join('\n');
 
 /** Deterministic JSON envelope (fixed key order) followed by the locally computed relations. */

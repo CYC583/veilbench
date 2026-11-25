@@ -233,6 +233,7 @@ export function App() {
           onSendChat={(q) => void actions.sendChatMessage(q)}
           cloudFailure={state.cloudFailure}
           outboundPayloadHash={state.zeroLeakProof?.sanitizedPayloadHash}
+          outboundImageHashes={state.zeroLeakProof?.outboundImageHashes}
           hasDocuments={state.documents.length > 0}
           onRetryCloud={actions.retryCloudAction}
           onDismissCloudFailure={actions.dismissCloudFailure}

@@ -28,6 +28,7 @@ const RULES: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
     m => `Cloud Gemini 暫時忙線（已在 ${m[2]} 個模型上嘗試 ${m[1]} 次）。已脫敏的內容與本機代號庫都完好，請稍後重試。`],
   [/^Cloud quota is temporarily exhausted \((\d+) attempts? across (\d+) models?\)\. .*$/,
     m => `雲端額度暫時用完（已在 ${m[2]} 個模型上嘗試 ${m[1]} 次）。資料仍留在本機，請稍後重試或切換為僅限本機。`],
+  [/^Cloud Gemini returned an unreadable answer .*$/, () => 'Cloud Gemini 回傳了無法解讀的內容，因此沒有顯示任何結果。請重試。'],
   [/^The configured cloud model is unavailable .*$/, () => '設定的雲端模型目前無法使用。請重試，或切換為僅限本機模式。'],
   [/^Firebase App Check rejected the cloud request\. .*$/, () => 'Firebase App Check 拒絕了這次雲端請求。請重新整理頁面以更新驗證後再試。'],
   [/^The network dropped before Cloud Gemini responded\. .*$/, () => '在 Cloud Gemini 回應前網路中斷。請重新連線後再試；本機脫敏在離線時仍可運作。'],

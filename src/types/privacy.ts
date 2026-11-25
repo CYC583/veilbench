@@ -97,6 +97,8 @@ export interface ZeroLeakProof {
   vaultEntriesCount: number;
   preFlightPassed: boolean;
   generatedAt: string;
+  /** SHA-256 of each pixel-burned PNG (data URL string) attached to the Stage 4 request. */
+  outboundImageHashes?: Array<{ title: string; sha256: string }>;
 }
 
 export interface ImageRedactionRegion {

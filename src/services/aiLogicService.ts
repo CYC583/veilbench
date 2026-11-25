@@ -452,7 +452,7 @@ export async function runRapidTriage(params: {
   ].join('\n');
 
   try {
-    const { value: result, modelUsed } = await callWithResilience(
+    const { value: triageCall, modelUsed } = await callWithResilience(
       {
         remoteConfig: params.remoteConfig,
         mode: params.mode,
@@ -461,8 +461,8 @@ export async function runRapidTriage(params: {
         started,
         onRetryNotice: params.onRetryNotice,
       },
-      (modelName) =>
-        getGenerativeModel(
+      async (modelName) => {
+        const res = await getGenerativeModel(
           ai,
           {
             mode: toSdkInferenceMode(params.mode),
@@ -477,33 +477,27 @@ export async function runRapidTriage(params: {
             },
           },
           CLOUD_REQUEST_OPTIONS
-        ).generateContent(prompt)
+        ).generateContent(prompt);
+        const json = safeJsonParse<Omit<TriageResult, 'inferenceSource' | 'generatedAt'>>(
+          res.response.text()
+        );
+        // An unreadable answer is a failed call (retried / failed over), never a placeholder flag.
+        if (!json?.overallRisk || !Array.isArray(json.flags) || json.flags.length === 0) {
+          throw new Error('Cloud Gemini returned an unreadable Stage 2 triage answer.');
+        }
+        return { result: res, parsed: json };
+      }
     );
+    const { result, parsed } = triageCall;
     const actualSource = mapActualSource(result.response.inferenceSource);
-    const parsed = safeJsonParse<Omit<TriageResult, 'inferenceSource' | 'generatedAt'>>(
-      result.response.text()
-    );
 
     perfTrace?.putAttribute('inference_source', actualSource);
     perfTrace?.stop();
 
     const triage: TriageResult = {
-      overallRisk: parsed?.overallRisk ?? 'medium',
-      headline:
-        parsed?.headline ??
-        'Rapid hybrid risk triage completed on sanitized document.',
-      flags:
-        parsed?.flags && parsed.flags.length > 0
-          ? parsed.flags
-          : [
-              {
-                id: 'flag_1',
-                title: 'Manual Clause Review Recommended',
-                severity: 'medium',
-                plainSummary: result.response.text().slice(0, 260),
-                excerpt: 'See sanitized document body.',
-              },
-            ],
+      overallRisk: parsed.overallRisk,
+      headline: parsed.headline ?? '',
+      flags: parsed.flags,
       inferenceSource: actualSource,
       generatedAt: new Date().toISOString(),
     };

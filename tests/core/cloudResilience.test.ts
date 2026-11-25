@@ -19,6 +19,10 @@ describe('classifyAiError', () => {
     expect(classifyAiError(quota)).toMatchObject({ kind: 'quota', retrySameModel: false, tryNextModel: true });
     expect(classifyAiError(httpError(429))).toMatchObject({ kind: 'rate_limited', retrySameModel: true });
   });
+  it('fails over (without same-model retry) on an unreadable structured answer', () => {
+    expect(classifyAiError(new Error('Cloud Gemini returned an unreadable Stage 2 triage answer.')))
+      .toMatchObject({ kind: 'invalid_output', retrySameModel: false, tryNextModel: true });
+  });
   it('prefers structured customErrorData status and detects timeouts / network loss', () => {
     expect(classifyAiError(Object.assign(new Error('x'), { customErrorData: { status: 503 } }))).toMatchObject({ kind: 'overloaded' });
     expect(classifyAiError(Object.assign(new Error('signal'), { name: 'AbortError' }))).toMatchObject({ kind: 'timeout' });

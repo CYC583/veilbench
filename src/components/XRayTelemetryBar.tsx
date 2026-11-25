@@ -98,6 +98,7 @@ export function XRayTelemetryBar({
     if (status === 'ok') return '成功';
     if (status === 'error') return '錯誤';
     if (status === 'blocked') return '已阻擋';
+    if (status === 'cached') return '快取';
     return status.toUpperCase();
   };
 
@@ -272,7 +273,7 @@ export function XRayTelemetryBar({
                             <td className="py-1.5 pr-3">
                               <span
                                 className={
-                                  evt.status === 'error'
+                                  evt.status === 'error' || evt.status === 'cached'
                                     ? 'font-semibold text-[#B45309]'
                                     : evt.status === 'blocked'
                                       ? 'font-semibold text-[#BE123C]'

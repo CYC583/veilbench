@@ -42,3 +42,11 @@ CLAUDE_HANDOFF.md
 
 # Local agent tooling (preview launch config, worktrees)
 .claude/
+
+# Internal review reports (Chinese working docs, keep out of the public repo)
+VeilBench_*.docx
+VeilBench_*.md
+*.docx
+
+# Local Firebase iOS configuration
+ios/GoogleService-Info.plist

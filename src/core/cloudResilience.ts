@@ -10,6 +10,7 @@ export type CloudFailureKind =
   | 'quota'
   | 'timeout'
   | 'model_unavailable'
+  | 'invalid_output'
   | 'app_check'
   | 'network'
   | 'unknown';
@@ -48,6 +49,10 @@ export function classifyAiError(err: unknown): ClassifiedCloudError {
   if (status !== undefined && [500, 502, 503, 504].includes(status)) return { kind: 'overloaded', status, ...transient };
   if (status === 401 || status === 403) return { kind: 'app_check', status, retrySameModel: false, tryNextModel: false };
   if (status === 404) return { kind: 'model_unavailable', status, retrySameModel: false, tryNextModel: true };
+  // Truncated / unparseable structured output: another model may answer properly.
+  if (/unreadable|malformed JSON/i.test(message)) {
+    return { kind: 'invalid_output', status, retrySameModel: false, tryNextModel: true };
+  }
   if ((err as { name?: string } | null)?.name === 'AbortError' || /timed? ?out|aborted/i.test(message)) {
     return { kind: 'timeout', ...transient };
   }
@@ -77,6 +82,8 @@ export function describeCloudFailure(kind: CloudFailureKind, attempts: CloudAtte
       return `Cloud Gemini is temporarily overloaded (${tried}). Your sanitized workspace and Local Vault are intact — retry in a moment.`;
     case 'quota':
       return `Cloud quota is temporarily exhausted (${tried}). Your sanitized data stayed local — retry later or switch to Local Only mode.`;
+    case 'invalid_output':
+      return `Cloud Gemini returned an unreadable answer (${tried}). Nothing was shown as a result — please retry.`;
     case 'model_unavailable':
       return `The configured cloud model is unavailable (${tried}). Retry, or switch to Local Only mode.`;
     case 'app_check':

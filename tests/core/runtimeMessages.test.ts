@@ -17,7 +17,7 @@ describe('zh-TW runtime message localization stays in sync with the real produce
     decideHybridRoute({ ...base, isOnline: false }).blockedReason!,
     decideHybridRoute({ ...base, categories: ['medical'],
       remoteConfig: { ...base.remoteConfig, routingPolicy: { medical: 'on_device_only' } } }).blockedReason!,
-    ...(['overloaded', 'quota', 'model_unavailable', 'app_check', 'network', 'unknown'] as const)
+    ...(['overloaded', 'quota', 'model_unavailable', 'invalid_output', 'app_check', 'network', 'unknown'] as const)
       .map(kind => describeCloudFailure(kind, [{ model: 'm', attempt: 1, kind }])),
     ...assertPayloadZeroLeak('Ada Cheng a@example.test represented by Jane Doe',
       runLocalAirlock({ documentId: 'd', rawText: 'Ada Cheng', nanoCandidates: [{ value: 'Ada Cheng', role: 'PERSON_NAME' }] }).vault)

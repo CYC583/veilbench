@@ -190,8 +190,8 @@ export function DocumentIntake({
               </h1>
               <p className="mt-1 max-w-[65ch] text-[14px] leading-relaxed text-[#5C626E]">
                 {isZh
-                  ? '選擇下方任一真實範例（含合約＋報價單圖片跨文件矛盾組），或直接拖曳文字／掃描件。所有個資皆在瀏覽器端以 3 層防禦先行鎖定與塗黑。'
-                  : 'Load a realistic sample bundle below or drop your own text/image scan. Every personal identifier, secret key, and image region is redacted locally before any cloud escalation.'}
+                  ? '給審閱客戶合約與報價單的自由工作者與小型工作室。選擇下方範例，或直接拖曳文字／掃描件；所有個資都會先在瀏覽器端以 3 層防禦鎖定與塗黑，再決定是否上雲。'
+                  : 'For freelancers and small studios reviewing client contracts and quotes. Load a sample below or drop your own text/image scan — every identifier, secret key and image region is redacted locally before any cloud escalation.'}
               </p>
             </div>
             {documents.length > 0 && (

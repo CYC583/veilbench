@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import type { ActualInferenceSource } from '../types/hybrid';
 import { localizeRuntimeMessage } from '../i18n/runtimeMessages';
+import { logHybridAnalyticsEvent } from '../config/firebase';
 import type {
   ChatTurn,
   DeepAuditResult,
@@ -43,6 +44,7 @@ interface AuditWorkbenchProps {
   cloudFailure: CloudFailureState | null;
   /** SHA-256 of the exact outbound payload, for the exported Zero-Leak receipt. */
   outboundPayloadHash?: string;
+  outboundImageHashes?: Array<{ title: string; sha256: string }>;
   /** Once a workspace exists the workbench stays mounted (idle / loading / error / success states). */
   hasDocuments?: boolean;
   onRetryCloud: () => void;
@@ -202,6 +204,7 @@ export function AuditWorkbench({
   onSendChat,
   cloudFailure,
   outboundPayloadHash,
+  outboundImageHashes,
   hasDocuments = false,
   onRetryCloud,
   onDismissCloudFailure,
@@ -240,6 +243,7 @@ export function AuditWorkbench({
   };
 
   const handleExportZeroPiiMarkdown = () => {
+    logHybridAnalyticsEvent('report_exported', { has_deep_audit: Boolean(deepAudit) });
     const lines: string[] = [
       '# VeilBench Zero-PII Audit Report',
       `Generated: ${new Date().toISOString()}`,
@@ -281,6 +285,7 @@ export function AuditWorkbench({
       '',
       '## Zero-Leak Receipt',
       `- Outbound payload SHA-256: \`${outboundPayloadHash ?? 'not computed'}\``,
+      ...(outboundImageHashes ?? []).map((h) => `- Burned image ${h.title} SHA-256: \`${h.sha256}\``),
       `- Report generated: ${new Date().toISOString()}`,
       ...(triage ? [`- Stage 2 inference source: ${triage.inferenceSource}`] : []),
       ...(deepAudit
