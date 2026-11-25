@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "VeilBench Selection",
+  "version": "1.0.0",
+  "description": "Open selected text in the VeilBench privacy airlock.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtDHntltm5og5ouwR3A57KbrifAHqydmXsurm0oddlrAQbecSy0FA86kzW8I2j2ZqQkVPpKEw6Dgj7pArZdGwpRelsLSFFhpVOTe9j2+UzcAMQBCIWLmquymur4Ljoz2lAHztiZgOp6o9Ysqyruy3pfjJ9h2W8JDsVngyilr7Y9yvP0vSFOI1LKNao+g4dPNJ9KFtxgSaRz1LLnOOMs0n0EwK+dj6bZwcq2q/fitnDAtJn2a8sW3XuaUlZpWeZ7O36eSxHtAyLIl4dnnfg+ZQMdMsPLByP7H+sxdpD+XMZsNw+RRLsM0v3SBenjkGbQIzYpl7pnv2HKEHo8AUoJBMBwIDAQAB", // gitleaks:allow -- Chrome extension ID, public RSA SPKI (not a credential)
+  "permissions": [
+    "activeTab",
+    "contextMenus",
+    "storage"
+  ],
+  "host_permissions": ["https://veilbench-hybrid-ai.web.app/*"],
+  "background": {
+    "service_worker": "worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://veilbench-hybrid-ai.web.app/*"
+      ],
+      "js": [
+        "bridge.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "externally_connectable": {
+    "matches": [
+      "https://veilbench-hybrid-ai.web.app/*"
+    ]
+  }
+}
