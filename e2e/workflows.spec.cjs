@@ -126,7 +126,7 @@ test('cancelling an in-flight run leaves no failure card or late result', async 
 test('opening or pasting an invalid iPhone link displays a clear error', async ({ page }) => {
   const malformed = 'https://veilbench-hybrid-ai.web.app/#relay=invalid';
   const panel = page.getByTestId('relay-panel');
-  const message = 'Paste the link shared from VeilBench Pocket on your iPhone.';
+  const message = 'Enter the 6-digit code from VeilBench Pocket, or paste its shared link.';
   await page.getByTestId('relay-open').click();
   await panel.getByLabel('Shared link').fill(malformed);
   await panel.getByRole('button', { name: 'Open', exact: true }).click();
@@ -138,4 +138,14 @@ test('opening or pasting an invalid iPhone link displays a clear error', async (
   await expect(panel.getByRole('alert')).toHaveText(message);
   expect(await page.evaluate(() => location.hash)).toBe('');
   await expect(page.getByTestId('relay-result')).toHaveCount(0);
+});
+
+test('a six-digit code starts phone-approved pairing and never reads before approval', async ({ page }) => {
+  await page.getByTestId('relay-open').click();
+  await page.locator('#relay-link').fill('123456');
+  await page.getByRole('button', { name: 'Open', exact: true }).click();
+  // The E2E network blocks Firebase, so the request cannot be filed: the page must say so, not show data.
+  await expect(page.getByTestId('relay-panel').getByRole('alert')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('relay-result')).toHaveCount(0);
+  await expect(page.locator('#relay-link')).toHaveValue('');
 });

@@ -1,13 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
 import { Copy, Smartphone } from 'lucide-react';
 import type { SupportedLocale } from '../types/audit';
-import { readRelayAudit, type RelayAudit, type RelayReadResult } from '../services/sessionStore';
-import { onRelayLink, parseRelayId, takeCapturedRelayId } from '../integrations/relayLink';
+import {
+  readPairedRelay,
+  readRelayAudit,
+  requestRelayAccess,
+  type RelayAudit,
+  type RelayReadResult,
+} from '../services/sessionStore';
+import { onRelayLink, parseRelayCode, parseRelayId, takeCapturedRelayId } from '../integrations/relayLink';
+
+const POLL_MS = 2500;
+const WAIT_LIMIT_MS = 10 * 60 * 1000;
+const PAIR_MESSAGES = {
+  not_found: { en: 'No audit for that code, or it has expired.', zh: '找不到這個代碼的稽核結果，或已過期。' },
+  timeout: { en: 'Still not approved on the iPhone. Start again when you are ready.', zh: 'iPhone 還沒核准。準備好後請重新開始。' },
+} as const;
 
 const dot = { high: 'bg-[#BE123C]', medium: 'bg-[#B45309]', low: 'bg-[#5C626E]' } as const;
 
 const MESSAGES: Record<Exclude<RelayReadResult['status'], 'ok'>, { en: string; zh: string }> = {
-  invalid_link: { en: 'Paste the link shared from VeilBench Pocket on your iPhone.', zh: '請貼上 iPhone 上 VeilBench Pocket 分享的連結。' },
+  invalid_link: { en: 'Enter the 6-digit code from VeilBench Pocket, or paste its shared link.', zh: '請輸入 VeilBench Pocket 上的 6 位數代碼，或貼上它分享的連結。' },
   not_found: { en: 'No audit for that link, or it has expired.', zh: '找不到這個連結的稽核結果，或已過期。' },
   offline: { en: 'You are offline. Reconnect and try again.', zh: '目前離線，請連線後再試。' },
   error: { en: 'Could not open that audit. Try again.', zh: '無法開啟這份稽核，請再試一次。' },
@@ -29,7 +42,69 @@ export function RelayOpener({ locale }: { locale: SupportedLocale }) {
   const [copied, setCopied] = useState(false);
 
   const requestNumber = useRef(0);
+  const pollRef = useRef<number | null>(null);
+  const [challenge, setChallenge] = useState<string | null>(null);
+  const [pairCode, setPairCode] = useState<string | null>(null);
+  const stopPolling = () => {
+    if (pollRef.current !== null) window.clearTimeout(pollRef.current);
+    pollRef.current = null;
+  };
+  useEffect(() => stopPolling, []);
+  const message = (m: { en: string; zh: string }) => (isZh ? m.zh : m.en);
+
+  const pollApproval = (code: string, current: number, startedAt: number, delay = POLL_MS) => {
+    pollRef.current = window.setTimeout(async () => {
+      const result = await readPairedRelay(code);
+      if (current !== requestNumber.current) return;
+      if (result.status === 'ok') {
+        setAudit(result.audit);
+        setChallenge(null);
+        setBusy(false);
+        pollRef.current = null;
+      } else if (result.status === 'waiting' && Date.now() - startedAt < WAIT_LIMIT_MS) {
+        pollApproval(code, current, startedAt);
+      } else {
+        setChallenge(null);
+        setBusy(false);
+        pollRef.current = null;
+        setError(message(result.status === 'waiting' ? PAIR_MESSAGES.timeout
+          : result.status === 'offline' ? MESSAGES.offline : PAIR_MESSAGES.not_found));
+      }
+    }, delay);
+  };
+
+  /** Default flow: 6-digit code from the phone, then the phone approves this browser. */
+  const startPairing = async (code: string) => {
+    const current = ++requestNumber.current;
+    stopPolling();
+    setOpen(true);
+    setBusy(true);
+    setError(null);
+    setAudit(null);
+    setChallenge(null);
+    setPairCode(code);
+    const result = await requestRelayAccess(code);
+    if (current !== requestNumber.current) return;
+    if (result.status !== 'requested') {
+      setBusy(false);
+      setError(message(result.status === 'offline' ? MESSAGES.offline
+        : result.status === 'error' ? MESSAGES.error : PAIR_MESSAGES.not_found));
+      return;
+    }
+    setChallenge(result.challenge);
+    pollApproval(code, current, Date.now());
+  };
+
+  const cancelPairing = () => {
+    ++requestNumber.current;
+    stopPolling();
+    setChallenge(null);
+    setBusy(false);
+  };
+
   const openRelay = async (id: string | null) => {
+    stopPolling();
+    setChallenge(null);
     const current = ++requestNumber.current;
     setOpen(true);
     setBusy(id !== null);
@@ -56,10 +131,12 @@ export function RelayOpener({ locale }: { locale: SupportedLocale }) {
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    const id = parseRelayId(link);
-    // Never keep the secret in the field after use.
+    const code = parseRelayCode(link);
+    const id = code ? null : parseRelayId(link);
+    // Never keep the code or link in the field after use.
     setLink('');
-    void openRelay(id);
+    if (code) void startPairing(code);
+    else void openRelay(id);
   };
 
   if (!open) {
@@ -86,11 +163,11 @@ export function RelayOpener({ locale }: { locale: SupportedLocale }) {
       </div>
       <p className="mt-1 text-[12.5px] leading-relaxed text-[#5C626E]">
         {isZh
-          ? 'iPhone 用 Apple 裝置端模型遮蔽文件，再用代號做雲端稽核，然後分享一個連結。這裡只會看到代號：真正的姓名和數字只在你的 iPhone 上。'
-          : 'Your iPhone masked the document with Apple’s on-device model, audited the tokens in the cloud and shared a link. You see tokens here; the real names and numbers stay on your iPhone.'}
+          ? 'iPhone 用 Apple 裝置端模型遮蔽文件，再用代號做雲端稽核。輸入 iPhone 上的 6 位數代碼，再在 iPhone 核准這個瀏覽器（也可貼上分享連結）。這裡只會看到代號：真正的姓名和數字只在你的 iPhone 上。'
+          : 'Your iPhone masked the document with Apple’s on-device model and audited the tokens in the cloud. Enter the 6-digit code shown on the iPhone, then approve this browser there (or paste a shared link). You see tokens here; the real names and numbers stay on your iPhone.'}
       </p>
       <form onSubmit={submit} className="mt-3 flex flex-wrap items-center gap-2">
-        <label htmlFor="relay-link" className="sr-only">{isZh ? '分享連結' : 'Shared link'}</label>
+        <label htmlFor="relay-link" className="sr-only">{isZh ? '6 位數代碼或分享連結' : '6-digit code or shared link'}</label>
         <input
           id="relay-link"
           type="password"
@@ -101,7 +178,7 @@ export function RelayOpener({ locale }: { locale: SupportedLocale }) {
             setLink(e.target.value);
             setError(null);
           }}
-          placeholder={isZh ? '貼上 iPhone 分享的連結' : 'Paste the link shared from your iPhone'}
+          placeholder={isZh ? '6 位數代碼，或貼上分享連結' : '6-digit code, or paste a shared link'}
           className="min-h-[44px] min-w-0 flex-1 rounded border border-[#E2E5EA] px-3 font-mono text-[12.5px] text-[#141518] sm:max-w-[460px]"
         />
         <button
@@ -113,6 +190,32 @@ export function RelayOpener({ locale }: { locale: SupportedLocale }) {
         </button>
         {error && <span role="alert" className="text-[12.5px] text-[#BE123C]">{error}</span>}
       </form>
+
+      {challenge && pairCode && (
+        <div className="mt-3 rounded-md border border-[#0F766E]/30 bg-[#F0FDFA] px-3.5 py-3" data-testid="relay-challenge" role="status">
+          <p className="text-[12.5px] text-[#0F766E]">
+            {isZh ? '在 iPhone 上輸入這個確認碼並核准：' : 'On your iPhone, enter this confirmation number and approve:'}
+          </p>
+          <p className="mt-1 font-mono text-[26px] font-semibold tracking-[0.25em] text-[#141518]">{challenge}</p>
+          <div className="mt-1 flex flex-wrap items-center gap-3 text-[12px] text-[#5C626E]">
+            <span>{isZh ? '等待 iPhone 核准…' : 'Waiting for approval on the iPhone…'}</span>
+            <button
+              type="button"
+              data-testid="relay-approved"
+              onClick={() => {
+                stopPolling();
+                pollApproval(pairCode, requestNumber.current, Date.now(), 0);
+              }}
+              className="font-medium text-[#0F766E] underline-offset-2 hover:underline"
+            >
+              {isZh ? '我已在 iPhone 核准' : 'I approved it on my iPhone'}
+            </button>
+            <button type="button" onClick={cancelPairing} className="font-medium text-[#0F766E] underline-offset-2 hover:underline">
+              {isZh ? '取消' : 'Cancel'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {audit && (
         <div className="mt-4 grid gap-3 lg:grid-cols-2" data-testid="relay-result">

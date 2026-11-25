@@ -2,11 +2,13 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocFromServer,
   getDocs,
   limit,
   orderBy,
   query,
+  serverTimestamp,
   setDoc,
   where,
 } from 'firebase/firestore';
@@ -148,6 +150,79 @@ export async function readRelayAudit(id: string): Promise<RelayReadResult> {
     const code = (err as { code?: string } | null)?.code;
     // Rules deny reads of expired or unknown IDs; to the user that is the same as "not found".
     if (code === 'permission-denied' || code === 'not-found') return { status: 'not_found' };
+    if (code === 'unavailable') return { status: 'offline' };
+    return { status: 'error' };
+  }
+}
+
+/**
+ * Six-digit pairing (the default on the phone). The phone shows a code; this browser files a request
+ * with its own random confirmation number; the user types that number on the phone, which approves this
+ * one browser. firestore.rules let only the owner or the approved browser read relays/{code}; a 128-bit
+ * link ID and a 6-digit code never authorize each other.
+ */
+export type RelayPairRequest =
+  | { status: 'requested'; challenge: string }
+  | { status: 'not_found' | 'offline' | 'error' };
+
+function randomChallenge(): string {
+  return (crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000).toString().padStart(6, '0');
+}
+
+export async function requestRelayAccess(code: string): Promise<RelayPairRequest> {
+  if (!/^\d{6}$/.test(code)) return { status: 'not_found' };
+  const { db } = getFirebaseServices();
+  const user = await ensureAnonymousUser();
+  if (!db || !user) return { status: 'offline' };
+  const ref = doc(db, 'relays', code, 'requests', user.uid);
+  try {
+    // Re-use this browser's earlier request instead of creating a second one.
+    const existing = await getDoc(ref);
+    const prior = existing.exists() ? (existing.data() as { challenge?: unknown }).challenge : undefined;
+    if (typeof prior === 'string' && /^\d{6}$/.test(prior)) return { status: 'requested', challenge: prior };
+  } catch {
+    // Not readable yet (no request, or no such relay): try to create one below.
+  }
+  const challenge = randomChallenge();
+  try {
+    // setDoc resolves only on server acknowledgement; offline it would wait forever.
+    const timedOut = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 10_000));
+    const outcome = await Promise.race([setDoc(ref, { challenge, createdAt: serverTimestamp() }), timedOut]);
+    if (outcome === 'timeout') return { status: 'offline' };
+    return { status: 'requested', challenge };
+  } catch (err) {
+    const code = (err as { code?: string } | null)?.code;
+    if (code === 'permission-denied' || code === 'not-found') return { status: 'not_found' };
+    if (code === 'unavailable') return { status: 'offline' };
+    return { status: 'error' };
+  }
+}
+
+/** Reads a paired relay from the server; 'waiting' until the phone has approved this browser. */
+export async function readPairedRelay(
+  code: string
+): Promise<{ status: 'ok'; audit: RelayAudit } | { status: 'waiting' | 'offline' | 'error' }> {
+  const { db } = getFirebaseServices();
+  const user = await ensureAnonymousUser();
+  if (!db || !user) return { status: 'offline' };
+  try {
+    const snap = await getDocFromServer(doc(db, 'relays', code));
+    if (!snap.exists()) return { status: 'waiting' };
+    const d = snap.data() as Record<string, unknown>;
+    const expires = d.expiresAt as { toDate?: () => Date } | undefined;
+    const expiresAt = typeof expires?.toDate === 'function' ? expires.toDate() : null;
+    if (expiresAt && expiresAt.getTime() <= Date.now()) return { status: 'error' };
+    const flags = Array.isArray(d.flags) ? d.flags.filter((f): f is RelayAudit['flags'][number] =>
+      !!f && typeof f === 'object' && typeof (f as { title?: unknown }).title === 'string'
+      && typeof (f as { summary?: unknown }).summary === 'string'
+      && ['high', 'medium', 'low'].includes((f as { severity?: string }).severity ?? '')).slice(0, 5) : [];
+    return {
+      status: 'ok',
+      audit: { id: code, flags, emailSanitized: typeof d.emailSanitized === 'string' ? d.emailSanitized : '', expiresAt },
+    };
+  } catch (err) {
+    const code = (err as { code?: string } | null)?.code;
+    if (code === 'permission-denied') return { status: 'waiting' }; // not approved yet
     if (code === 'unavailable') return { status: 'offline' };
     return { status: 'error' };
   }
