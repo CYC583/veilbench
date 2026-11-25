@@ -15,6 +15,14 @@ import type {
   WorkbenchDocument,
 } from '../types/audit';
 import { SAMPLE_PACKS } from '../data/sampleDocuments';
+import { ACCEPTED_FILE_TYPES, IntakeError, readIntakeFile, type IntakeErrorCode } from '../services/fileIntake';
+
+const INTAKE_ERROR_ZH: Record<IntakeErrorCode, string> = {
+  too_large: '檔案超過 20 MB，請改用較小的檔案。',
+  unsupported: '支援的檔案：PDF、Word（.docx）、文字檔、PNG 與 JPEG。',
+  unreadable: '這個檔案無法讀取（可能已加密或損毀）。',
+  empty: '這個檔案裡沒有可讀的文字。',
+};
 
 interface DocumentIntakeProps {
   documents: WorkbenchDocument[];
@@ -49,46 +57,51 @@ export function DocumentIntake({
   const [rawText, setRawText] = useState('');
   const [imageDataUrl, setImageDataUrl] = useState<string | undefined>(undefined);
   const [dragActive, setDragActive] = useState(false);
+  const [isReading, setIsReading] = useState(false);
+  const [intakeError, setIntakeError] = useState<string | null>(null);
+  const [intakeInfo, setIntakeInfo] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const handleFiles = (fileList: FileList | null) => {
+  const handleFiles = async (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
     const file = fileList[0];
-    if (file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          setImageDataUrl(reader.result);
-          if (!title) setTitle(file.name);
-          if (!rawText) {
-            setRawText(
-              isZh
-                ? `已上傳掃描件：${file.name}\n（可在此補充 OCR 筆記或敏感欄位，與影像像素塗黑一併處理。）`
-                : `Uploaded scan: ${file.name}\n(Add optional OCR notes or sensitive fields here to combine with visual pixel redaction.)`
-            );
-          }
-          setShowCustomForm(true);
-        }
-      };
-      reader.readAsDataURL(file);
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setTitle(file.name);
-        setRawText(reader.result);
-        setShowCustomForm(true);
+    setIntakeError(null);
+    setIntakeInfo(null);
+    setIsReading(true);
+    try {
+      // Parsed entirely in this browser: nothing is uploaded at this step.
+      const result = await readIntakeFile(file);
+      setTitle(result.title);
+      setImageDataUrl(result.imageDataUrl);
+      setRawText(
+        result.text
+          || (isZh
+            ? `已上傳掃描件：${file.name}\n（可在此補充 OCR 筆記或敏感欄位，與影像像素塗黑一併處理。）`
+            : `Uploaded scan: ${file.name}\n(Add optional OCR notes or sensitive fields here to combine with visual pixel redaction.)`)
+      );
+      const info: string[] = [];
+      if (result.pages) info.push(isZh ? `已在本機讀取 ${result.pages} 頁` : `Read ${result.pages} page(s) on this device`);
+      if (result.scannedPdf) info.push(isZh ? '偵測為掃描檔，第 1 頁轉成圖片以便像素塗黑' : 'Looks scanned: page 1 was turned into an image for pixel redaction');
+      if (result.scaledFrom) {
+        info.push(isZh
+          ? `圖片已從 ${result.scaledFrom.width}×${result.scaledFrom.height} 縮小`
+          : `Image scaled down from ${result.scaledFrom.width}×${result.scaledFrom.height}`);
       }
-    };
-    reader.readAsText(file);
+      setIntakeInfo(info.length ? info.join(' · ') : null);
+      setShowCustomForm(true);
+    } catch (err) {
+      const code: IntakeErrorCode = err instanceof IntakeError ? err.code : 'unreadable';
+      setIntakeError(isZh ? INTAKE_ERROR_ZH[code] : err instanceof Error ? err.message : 'This file could not be read.');
+    } finally {
+      setIsReading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setDragActive(false);
-    handleFiles(e.dataTransfer.files);
+    void handleFiles(e.dataTransfer.files);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -283,17 +296,25 @@ export function DocumentIntake({
                     ? '已附加圖片掃描件（點擊可更換）'
                     : 'Image scan attached (click to replace)'
                   : isZh
-                    ? '拖曳 .txt / .png / .jpg 掃描件至此，或點擊選擇'
-                    : 'Drop .txt, .png, or .jpg scan here, or click to browse'}
+                    ? '拖曳 PDF、Word、文字檔或 PNG／JPEG 至此，或點擊選擇（只在本機讀取）'
+                    : 'Drop a PDF, Word file, text file or PNG/JPEG here, or click to browse (read on this device only)'}
               </span>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".txt,.md,image/png,image/jpeg"
-                onChange={(e) => handleFiles(e.target.files)}
+                accept={ACCEPTED_FILE_TYPES}
+                onChange={(e) => void handleFiles(e.target.files)}
                 className="hidden"
               />
             </div>
+            {(isReading || intakeError || intakeInfo) && (
+              <p
+                role={intakeError ? 'alert' : 'status'}
+                className={`text-[12px] leading-snug ${intakeError ? 'text-[#BE123C]' : 'text-[#5C626E]'}`}
+              >
+                {isReading ? (isZh ? '正在本機讀取檔案…' : 'Reading the file on this device…') : intakeError ?? intakeInfo}
+              </p>
+            )}
 
             <div>
               <label

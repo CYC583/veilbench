@@ -20,6 +20,16 @@ export function resolveImageRegions(
   });
 }
 
+/** Longest image edge kept for redaction and upload. */
+export const MAX_IMAGE_EDGE = 2000;
+
+/** Proportional size that fits within maxEdge on the longest side; never upscales. */
+export function scaleToFit(width: number, height: number, maxEdge: number): { width: number; height: number } {
+  if (!(width > 0) || !(height > 0)) return { width: 0, height: 0 };
+  const ratio = Math.min(1, maxEdge / Math.max(width, height));
+  return { width: Math.max(1, Math.round(width * ratio)), height: Math.max(1, Math.round(height * ratio)) };
+}
+
 export async function redactImageRegionsOnCanvas(
   imageDataUrl: string, regions: ImageRedactionRegion[],
 ): Promise<string> {
@@ -37,12 +47,14 @@ export async function redactImageRegionsOnCanvas(
   });
 
   const canvas = document.createElement('canvas');
-  const w = canvas.width = image.naturalWidth;
-  const h = canvas.height = image.naturalHeight;
+  // Phone photos (e.g. 4000×3000) are scaled down so the redacted PNG stays small enough for the request.
+  const size = scaleToFit(image.naturalWidth, image.naturalHeight, MAX_IMAGE_EDGE);
+  const w = canvas.width = size.width;
+  const h = canvas.height = size.height;
   if (!w || !h) throw new Error('Image has no pixels to redact.');
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas 2D context unavailable for image redaction.');
-  ctx.drawImage(image, 0, 0);
+  ctx.drawImage(image, 0, 0, w, h);
   for (const { bbox: { x, y, width, height }, label } of regions) {
     if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
       throw new Error('Invalid redaction region dimensions.');

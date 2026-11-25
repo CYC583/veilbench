@@ -18,6 +18,8 @@
   "dependencies": {
     "firebase": "^12.5.0",
     "lucide-react": "^0.511.0",
+    "mammoth": "^1.13.0",
+    "pdfjs-dist": "^6.5.438",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
