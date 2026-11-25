@@ -1,6 +1,5 @@
 import Foundation
 import CryptoKit
-import Security
 import FirebaseAuth
 import FirebaseFirestore
 import FirebaseRemoteConfig
@@ -47,23 +46,16 @@ struct PocketResult {
 }
 
 struct PocketRelay {
-  let id: String
+  let code: String
   let expiresAt: Date
-  var url: URL { URL(string: "https://veilbench-hybrid-ai.web.app/#relay=\(id)")! }
 
-  init(now: Date = Date()) throws {
-    var bytes = [UInt8](repeating: 0, count: 16)
-    let status = bytes.withUnsafeMutableBytes {
-      SecRandomCopyBytes(kSecRandomDefault, $0.count, $0.baseAddress!)
-    }
-    guard status == errSecSuccess else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(status)) }
-    id = bytes.map { String(format: "%02x", $0) }.joined()
-    // Firestore checks the ceiling against server time. Leave room for small client clock offsets.
-    expiresAt = now.addingTimeInterval(15 * 60 - 30)
+  init(now: Date = Date()) {
+    code = String(format: "%06d", Int.random(in: 0..<1_000_000))
+    expiresAt = now.addingTimeInterval(24 * 60 * 60)
   }
 
-  func document(for result: PocketResult) -> [String: Any] {
-    ["createdAt": FieldValue.serverTimestamp(), "expiresAt": Timestamp(date: expiresAt),
+  func document(for result: PocketResult, ownerUid: String) -> [String: Any] {
+    ["ownerUid": ownerUid, "createdAt": FieldValue.serverTimestamp(), "expiresAt": Timestamp(date: expiresAt),
      "flags": result.relayFlags, "emailSanitized": result.email]
   }
 }
@@ -120,9 +112,50 @@ enum PocketServices {
   }
 
   static func publishRelay(_ result: PocketResult) async throws -> PocketRelay {
-    _ = try await userID()
-    let relay = try PocketRelay()
-    try await database.collection("relays").document(relay.id).setData(relay.document(for: result))
-    return relay
+    let uid = try await userID()
+    for attempt in 1...3 {
+      let relay = PocketRelay()
+      let doc = database.collection("relays").document(relay.code)
+      do {
+        try await doc.setData(relay.document(for: result, ownerUid: uid))
+        return relay
+      } catch {
+        // A create on an occupied code is an update and is denied by the create-only rule.
+        let failure = error as NSError
+        guard attempt < 3, failure.domain == FirestoreErrorDomain,
+              failure.code == FirestoreErrorCode.Code.permissionDenied.rawValue else { throw error }
+      }
+    }
+    throw PocketResult.ExportError.invalidSize
   }
+
+  enum PairingError: LocalizedError {
+    case noUniqueRequest, alreadyPaired
+    var errorDescription: String? {
+      switch self {
+      case .noUniqueRequest: "No unique matching browser. Check the confirmation number on your browser."
+      case .alreadyPaired: "This code has already been approved for a different browser."
+      }
+    }
+  }
+
+  static func approveRecipient(code: String, challenge: String) async throws {
+    guard challenge.range(of: #"^[0-9]{6}$"#, options: .regularExpression) != nil else {
+      throw PairingError.noUniqueRequest
+    }
+    let relay = database.collection("relays").document(code)
+    let matches = try await relay.collection("requests").whereField("challenge", isEqualTo: challenge)
+      .limit(to: 2).getDocuments(source: .server)
+    guard matches.documents.count == 1, let uid = matches.documents.first?.documentID else {
+      throw PairingError.noUniqueRequest
+    }
+    let approval = relay.collection("pairing").document("approval")
+    let prior = try await approval.getDocument(source: .server)
+    if prior.exists {
+      guard prior.data()?["receiverUid"] as? String == uid else { throw PairingError.alreadyPaired }
+      return
+    }
+    try await approval.setData(["receiverUid": uid, "challenge": challenge, "approvedAt": FieldValue.serverTimestamp()])
+  }
+
 }

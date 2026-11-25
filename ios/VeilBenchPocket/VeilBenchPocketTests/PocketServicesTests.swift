@@ -1,5 +1,5 @@
-import XCTest
 import FirebaseFirestore
+import XCTest
 @testable import VeilBenchPocket
 
 final class PocketServicesTests: XCTestCase {
@@ -31,29 +31,25 @@ final class PocketServicesTests: XCTestCase {
     XCTAssertEqual((session["sanitizedExcerpts"] as? [Any])?.count, 0)
   }
 
-  func testRelayUses128RandomBitsAndOnlyPublishesIDInProductionURLFragment() throws {
-    let relay = try PocketRelay()
-    XCTAssertEqual(relay.id.count, 32)
-    XCTAssertTrue(relay.id.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) })
-    XCTAssertTrue(relay.id != (try PocketRelay()).id)
-    let components = try XCTUnwrap(URLComponents(url: relay.url, resolvingAgainstBaseURL: false))
-    XCTAssertEqual(components.scheme, "https")
-    XCTAssertEqual(components.host, "veilbench-hybrid-ai.web.app")
-    XCTAssertEqual(components.path, "/")
-    XCTAssertNil(components.query)
-    XCTAssertTrue(components.fragment == "relay=" + relay.id)
+  @MainActor func testPairingCodeKeepsSixASCIIDigits() {
+    for _ in 0..<100 {
+      let code = PocketRelay().code
+      XCTAssertEqual(code.utf8.count, 6)
+      XCTAssertTrue(code.utf8.allSatisfy { (48...57).contains($0) })
+    }
   }
-
-  func testRelayAllowsForClockSkewUnderFifteenMinutesAndContainsOnlyGuardedAuditFields() throws {
+  func testPublishedResultContainsOnlyGuardedAuditFieldsAndExpiresWithinOneDay() throws {
     let issued = Date(timeIntervalSince1970: 1000)
-    let relay = try PocketRelay(now: issued)
+    let relay = PocketRelay(now: issued)
     let report = AuditReport(flags: [], email: "Signed [PARTY_CONTRACTOR_1]", model: "test", modelVersion: nil, attempts: [])
     let result = try PocketResult(report: report, payload: "fixture", vault: Vault())
-    let doc = relay.document(for: result)
-    XCTAssertEqual(Set(doc.keys), ["createdAt", "expiresAt", "flags", "emailSanitized"])
+    let doc = relay.document(for: result, ownerUid: "owner")
+    XCTAssertEqual(Set(doc.keys), ["ownerUid", "createdAt", "expiresAt", "flags", "emailSanitized"])
+    XCTAssertEqual(doc["ownerUid"] as? String, "owner")
     XCTAssertTrue(doc["createdAt"] is FieldValue)
-    XCTAssertEqual((doc["expiresAt"] as? Timestamp)?.dateValue(), issued.addingTimeInterval(870))
+    XCTAssertEqual((doc["expiresAt"] as? Timestamp)?.dateValue(), issued.addingTimeInterval(86_400))
     XCTAssertEqual(doc["flags"] as? [[String: String]], [])
     XCTAssertEqual(doc["emailSanitized"] as? String, report.email)
   }
+
 }

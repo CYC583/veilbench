@@ -31,8 +31,8 @@ service cloud.firestore {
         && validSession(request.resource.data);
     }
 
-    // The 128-bit link ID is a short-lived bearer secret. Clients can read one exact path, never a query.
-    match /relays/{id} {
+    // The code identifies a relay. Its owner must approve the recipient separately.
+    match /relays/{code} {
       function validFlag(flag) {
         return flag is map && flag.keys().hasOnly(['title', 'severity', 'summary'])
           && flag.title is string && flag.title.size() > 0 && flag.title.size() <= 120
@@ -47,18 +47,51 @@ service cloud.firestore {
           && (flags.size() < 4 || validFlag(flags[3]))
           && (flags.size() < 5 || validFlag(flags[4]));
       }
-      allow create: if request.auth != null && id.matches('[0-9a-f]{32}')
-        && request.resource.data.keys().hasOnly(['createdAt','expiresAt','flags','emailSanitized'])
+      allow create: if request.auth != null && code.matches('[0-9]{6}')
+        && request.resource.data.keys().hasOnly(['ownerUid','createdAt','expiresAt','flags','emailSanitized'])
+        && request.resource.data.ownerUid == request.auth.uid
         && request.resource.data.createdAt == request.time
         && request.resource.data.expiresAt is timestamp
         && request.time < request.resource.data.expiresAt
-        && request.resource.data.expiresAt <= request.time + duration.value(15, 'm')
+        && request.resource.data.expiresAt <= request.time + duration.value(24, 'h')
         && request.resource.data.emailSanitized is string
         && request.resource.data.emailSanitized.size() > 0
         && request.resource.data.emailSanitized.size() <= 5000
         && validFlags(request.resource.data.flags);
-      allow get: if request.auth != null && id.matches('[0-9a-f]{32}')
-        && request.time < resource.data.expiresAt;
+      function relay() {
+        return get(/databases/$(database)/documents/relays/$(code)).data;
+      }
+      function isOwner() {
+        return request.auth != null && relay().ownerUid == request.auth.uid;
+      }
+      function live() {
+        return code.matches('[0-9]{6}') && request.time < relay().expiresAt;
+      }
+      function approvedReceiver() {
+        return get(/databases/$(database)/documents/relays/$(code)/pairing/approval).data.receiverUid == request.auth.uid;
+      }
+      allow get: if request.auth != null && code.matches('[0-9]{6}') && request.time < resource.data.expiresAt
+        && (resource.data.ownerUid == request.auth.uid || approvedReceiver());
+
+      match /requests/{uid} {
+        allow create: if request.auth != null && request.auth.uid == uid && live() && !isOwner()
+          && request.resource.data.keys().hasOnly(['challenge', 'createdAt'])
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.challenge is string
+          && request.resource.data.challenge.matches('[0-9]{6}');
+        allow get: if request.auth != null && live() && (request.auth.uid == uid || isOwner());
+        allow list: if isOwner() && live() && request.query.limit <= 2;
+      }
+      match /pairing/approval {
+        allow create: if isOwner() && live()
+          && request.resource.data.keys().hasOnly(['receiverUid','challenge','approvedAt'])
+          && request.resource.data.approvedAt == request.time
+          && request.resource.data.receiverUid is string
+          && request.resource.data.receiverUid.matches('[A-Za-z0-9_-]{1,128}')
+          && get(/databases/$(database)/documents/relays/$(code)/requests/$(request.resource.data.receiverUid)).data.challenge
+             == request.resource.data.challenge;
+        allow get: if isOwner() && live();
+      }
     }
 
     // Deny all other collections by default

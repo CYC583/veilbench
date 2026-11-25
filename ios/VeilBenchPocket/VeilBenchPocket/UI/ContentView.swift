@@ -4,6 +4,7 @@ struct ContentView: View {
   @State private var model = PipelineModel()
   @State private var previewExpanded = false
   @State private var showServices = false
+  @State private var relayChallenge = ""
   @FocusState private var editorFocused: Bool
 
   var body: some View {
@@ -287,28 +288,25 @@ struct ContentView: View {
         auditResults(report)
         Divider()
         Text(model.syncStatus).font(.footnote)
-        Text("Anyone with the link can read the tokenized flags and letter for up to 15 minutes.")
+        Text("The pairing code expires within 24 hours. Only the browser you confirm here can read the tokenized flags and letter.")
           .font(.caption).foregroundStyle(Theme.muted)
-        if let relay = model.relay {
-          TimelineView(.explicit([Date(), relay.expiresAt].sorted())) { timeline in
-            if timeline.date < relay.expiresAt {
-              ShareLink(item: relay.url) { Label("Share audit link", systemImage: "square.and.arrow.up") }
-              Text("Expires at \(relay.expiresAt, style: .time)").font(.caption)
-            } else {
-              createLinkButton
-            }
+        if let relay = model.relay, relay.expiresAt > Date() {
+          Text(relay.code).font(.title.monospacedDigit()).textSelection(.enabled)
+            .onAppear { relayChallenge = "" }
+          if !model.recipientApproved {
+            TextField("Confirmation number from your browser", text: $relayChallenge)
+              .keyboardType(.numberPad).textFieldStyle(.roundedBorder)
+              .accessibilityIdentifier("relayConfirmation")
+            Button("Approve this browser") { Task { await model.approveRecipient(challenge: relayChallenge) } }
+              .disabled(model.publishingRelay || relayChallenge.range(of: #"^[0-9]{6}$"#, options: .regularExpression) == nil)
           }
         } else {
-          createLinkButton
+          Button("Create pairing code") { Task { await model.publishRelay() } }
+            .disabled(!model.canPublish)
         }
         if !model.relayStatus.isEmpty { Text(model.relayStatus).font(.footnote) }
       }
     }
-  }
-
-  private var createLinkButton: some View {
-    Button("Create share link") { Task { await model.publishRelay() } }
-      .disabled(!model.canPublish)
   }
 
   private func sendButton(title: String) -> some View {
