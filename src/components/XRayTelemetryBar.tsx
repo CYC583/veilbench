@@ -291,7 +291,13 @@ export function XRayTelemetryBar({
                               {evt.tokens ? evt.tokens.total.toLocaleString() : '—'}
                             </td>
                             <td className="py-1.5 pr-3">{evt.latencyMs}ms</td>
-                            <td className="py-1.5 pr-3 text-[#5C626E]">{evt.appCheckStatus}</td>
+                            <td
+                              className="py-1.5 pr-3 text-[#5C626E]"
+                              title={evt.appCheckStatus === 'offline_bypass' ? 'No network request, so no App Check token is needed.' : undefined}
+                            >
+                              {/* `offline_bypass` means "no cloud request was made"; show it as not applicable so it never reads as a bypass. */}
+                              {evt.appCheckStatus === 'offline_bypass' ? (locale === 'zh-TW' ? '不適用（本機）' : 'n/a · local') : evt.appCheckStatus}
+                            </td>
                             <td className="py-1.5 text-[#5C626E]">{evt.note ?? '—'}</td>
                           </tr>
                         ))}

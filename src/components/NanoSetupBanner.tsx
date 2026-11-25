@@ -88,7 +88,7 @@ export function NanoSetupBanner({
             {isZh ? (
               <ol className="list-decimal space-y-1 pl-5 text-[12px] leading-relaxed">
                 <li>
-                  開啟 <code>chrome://flags</code>，搜尋 <strong>Gemma 4 for Built-in AI</strong> →
+                  開啟 <code>chrome://flags/#gemma4-for-built-in-ai</code>，即 <strong>Gemma 4 for Built-in AI</strong> →
                   選擇 <strong>Enabled</strong>（Gemini Nano 4 端側模型）
                 </li>
                 <li>
@@ -107,7 +107,7 @@ export function NanoSetupBanner({
             ) : (
               <ol className="list-decimal space-y-1 pl-5 text-[12px] leading-relaxed">
                 <li>
-                  Open <code>chrome://flags</code>, search <strong>Gemma 4 for Built-in AI</strong> →
+                  Open <code>chrome://flags/#gemma4-for-built-in-ai</code> — <strong>Gemma 4 for Built-in AI</strong> →
                   select <strong>Enabled</strong> (Gemini Nano 4 on-device model)
                 </li>
                 <li>

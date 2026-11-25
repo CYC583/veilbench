@@ -144,7 +144,7 @@ export function getFirebaseServices(): FirebaseRuntimeServices {
     remoteConfig.defaultConfig = {
       max_on_device_chars: 7500,
       cloud_model_name: 'gemini-3.5-flash-lite',
-      cloud_fallback_model_name: 'gemini-3.5-flash',
+      cloud_fallback_model_name: 'gemini-3.6-flash',
       strict_pii_block_enabled: true,
     };
   } catch {

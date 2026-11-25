@@ -88,7 +88,7 @@ flowchart TD
 VeilBench gracefully degrades in non-Nano browsers (Safari, Firefox, mobile, or Chrome without flags) using its Layer 2 Deterministic Shield and Firebase AI Logic cloud fallback. To experience full **on-device, zero-cost, offline Gemini Nano inference**:
 
 1. Use **Chrome Desktop 139+** (with at least ~22 GB free disk space for the built-in model).
-2. Open `chrome://flags`, search **Gemma 4 for Built-in AI** and set it to **Enabled** (Gemini Nano 4 on-device model).
+2. Open `chrome://flags/#gemma4-for-built-in-ai` (shown as **Gemma 4 for Built-in AI**) and set it to **Enabled** (Gemini Nano 4 on-device model).
 3. Open `chrome://flags/#prompt-api-for-gemini-nano` and set it to **Enabled**.
 4. Open `chrome://flags/#prompt-api-for-gemini-nano-multimodal-input` and set it to **Enabled** (enables local image inspection).
 5. Relaunch Chrome and verify model status at `chrome://on-device-internals`.

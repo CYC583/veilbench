@@ -11,6 +11,12 @@
 
 The same airlock also protects clinical lab panels and SaaS renewal notices (both included as one-click samples), but the core story is one person, two documents, and a signature they should not give yet.
 
+**Why this matters (sourced):**
+- In an analysis of 22.46 million enterprise GenAI prompts, Harmonic Security found 579,113 sensitive-data exposures; legal discourse alone accounted for 22.3% of them ([Harmonic Security, Jan 15 2026](https://www.harmonic.security/resources/what-22-million-enterprise-ai-prompts-reveal-about-shadow-ai-in-2025)).
+- Cyberhaven reports that 39.7% of AI interactions involve sensitive data ([Cyberhaven AI Adoption & Risk Report 2026](https://www.cyberhaven.com/resources/research/ai-adoption-risk-report-2026)).
+- 59% of small businesses have at least some invoices overdue by 30+ days, and those with unpaid invoices are owed $17.7K on average—payment terms are exactly what freelancers need to check before signing ([Intuit QuickBooks 2026 Late Payments Report](https://quickbooks.intuit.com/r/small-business-data/small-business-late-payments-report-2026/)).
+- The global average cost of a data breach reached $4.99 million in 2026 ([IBM, Jul 29 2026](https://newsroom.ibm.com/2026-07-29-ibm-study-one-in-four-malicious-breaches-are-ai-enabled,-costing-companies-6-million-on-average)).
+
 We realized this problem **can only be solved by Hybrid AI**:
 - **Cloud-only AI fails on privacy, cost, and offline reliability.** You should never upload raw SSNs, unredacted scans, or leaked API keys to the cloud just to get a document reviewed—and you shouldn't lose access to rapid risk triage when reviewing a contract on a flight.
 - **On-device-only AI fails on deep, multi-document reasoning.** Chrome's built-in Gemini Nano is fast, free, and 100% private, but its smaller context window and single-turn focus cannot reliably cross-reference a multi-page Master Services Agreement against an attached quote scan, synthesize surgical redline diffs, and run multi-turn negotiation coaching.

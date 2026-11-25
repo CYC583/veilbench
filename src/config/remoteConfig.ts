@@ -7,7 +7,7 @@ export const DEFAULT_REMOTE_HYBRID_CONFIG: RemoteHybridConfig = {
   cloudModelName: 'gemini-3.5-flash-lite',
   // Failover must not depend on the Remote Config fetch succeeding (observed: a session without the
   // fetched value hit a 500 on the primary and had no model to fail over to).
-  cloudFallbackModelName: 'gemini-3.5-flash',
+  cloudFallbackModelName: 'gemini-3.6-flash',
   strictPiiBlockEnabled: true,
   configSource: 'default',
 };

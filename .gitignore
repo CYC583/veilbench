@@ -50,3 +50,15 @@ VeilBench_*.md
 
 # Local Firebase iOS configuration
 ios/GoogleService-Info.plist
+
+# iOS companion (VeilBench Pocket)
+ios/DerivedData/
+ios/SourcePackages/
+ios/evidence/
+ios/*.log
+**/xcuserdata/
+*.xcuserstate
+ios/VeilBenchPocket/VeilBenchPocket/GoogleService-Info.plist
+GoogleService-Info.plist
+VeilBench_*.html
+VeilBench_*.pdf
