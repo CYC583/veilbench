@@ -28,7 +28,7 @@ export function parseCalendarDate(value: string): number | null {
   return Number.isFinite(t) ? t : null;
 }
 
-function pctBucket(pct: number): PctBucket {
+export function pctBucket(pct: number): PctBucket {
   if (pct < 5) return '<5%';
   if (pct < 15) return '5-15%';
   if (pct < 30) return '15-30%';
@@ -101,16 +101,38 @@ function formatLikeSource(amount: number, sample: string): string {
  * Local re-hydration with on-device math: {{DIFF:[A]-[B]}} becomes "$6,000 (12.5%)" computed from the
  * vault, then every token is restored. Unknown or non-numeric tokens are left untouched.
  */
+export interface LocalDiff {
+  a: string;
+  b: string;
+  /** Signed a − b, computed on-device from the vault. */
+  diff: number;
+  /** |a − b| as a percentage of the larger amount. */
+  pct: number;
+  /** e.g. "$6,000" — formatted like the source amount. */
+  amountText: string;
+}
+
+/** Exact money difference between two vault tokens, computed locally; null if either is not a number. */
+export function computeLocalDiff(a: string, b: string, vault: VaultMap): LocalDiff | null {
+  const ea = vault.byToken[a];
+  const eb = vault.byToken[b];
+  const x = ea ? parseMoneyAmount(ea.originalValue) : null;
+  const y = eb ? parseMoneyAmount(eb.originalValue) : null;
+  if (x === null || y === null || Math.max(x, y) === 0) return null;
+  const diff = x - y;
+  return { a, b, diff, pct: (Math.abs(diff) / Math.max(x, y)) * 100,
+    amountText: formatLikeSource(Math.abs(diff), ea.originalValue) };
+}
+
+/** Every {{DIFF:[A]-[B]}} placeholder in a text, as token pairs. */
+export function findDiffPlaceholders(text: string): Array<[string, string]> {
+  return Array.from(text.matchAll(diffPattern), m => [m[1], m[2]] as [string, string]);
+}
+
 export function rehydrateWithLocalMath(text: string, vault: VaultMap): string {
   const withMath = text.replace(diffPattern, (match, a: string, b: string) => {
-    const ea = vault.byToken[a];
-    const eb = vault.byToken[b];
-    const x = ea ? parseMoneyAmount(ea.originalValue) : null;
-    const y = eb ? parseMoneyAmount(eb.originalValue) : null;
-    if (x === null || y === null || Math.max(x, y) === 0) return match;
-    const diff = x - y;
-    const pct = (Math.abs(diff) / Math.max(x, y)) * 100;
-    return `${diff < 0 ? '-' : ''}${formatLikeSource(Math.abs(diff), ea.originalValue)} (${pct.toFixed(1)}%)`;
+    const d = computeLocalDiff(a, b, vault);
+    return d ? `${d.diff < 0 ? '-' : ''}${d.amountText} (${d.pct.toFixed(1)}%)` : match;
   });
   return rehydrateText(withMath, vault);
 }

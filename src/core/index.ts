@@ -9,3 +9,4 @@ export * from './canvasRedactor';
 export * from './cloudResilience';
 export * from './relationalHints';
 export * from './outboundEnvelope';
+export * from './decisionCard';
