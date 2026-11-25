@@ -284,7 +284,7 @@ export function useWorkbenchStore() {
         setPreFlight(null);
         setZeroLeakProof(null);
         setOutboundPayload('');
-        return { assertion: null, proof: null, payload: '' };
+        return { assertion: null, proof: null, payload: '', disabledTokens: new Set<string>() };
       }
       const rawCombined = combineDocumentsText(nextDocs, 'rawText');
       // Layer 3, the SHA-256 proof and the Payload Inspector all operate on the exact string Stage 4 sends.
@@ -320,7 +320,8 @@ export function useWorkbenchStore() {
       setPreFlight(assertion);
       setZeroLeakProof(proof);
       setOutboundPayload(sanitizedCombined);
-      return { assertion, proof, payload: sanitizedCombined };
+      // disabledTokens is returned as-is so Stage 4 re-checks with exactly what Layer 3 used here.
+      return { assertion, proof, payload: sanitizedCombined, disabledTokens };
     },
     []
   );
@@ -793,7 +794,7 @@ export function useWorkbenchStore() {
     setErrorBanner(null);
     setCloudFailure(null);
 
-    const { assertion, proof, payload } = await recomputeSecurityProof(documents, vault, entitiesByDoc);
+    const { assertion, proof, payload, disabledTokens } = await recomputeSecurityProof(documents, vault, entitiesByDoc);
     if (!assertion || !assertion.passed || !proof?.preFlightPassed) {
       pushTelemetry({
         id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -854,7 +855,7 @@ export function useWorkbenchStore() {
         documents,
         // The approval that matches this exact envelope and these exact burned images (same snapshot of
         // documents, vault and toggles). The server-template path re-checks it and stops on any mismatch.
-        templateProof: { vault, disabledTokens: collectDisabledTokens(entitiesByDoc), proof },
+        templateProof: { vault, disabledTokens, proof },
         mode: decision.recommendedMode,
         remoteConfig,
         onRetryNotice: inParallel ? undefined : setStageMessage,
