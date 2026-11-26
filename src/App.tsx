@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, PlayCircle, Square, X } from 'lucide-react';
 import { useWorkbenchStore } from './state/useWorkbenchStore';
 import { localizeRuntimeMessage } from './i18n/runtimeMessages';
+import { UI, translator } from './i18n/ui';
 import { TopCommandBar } from './components/TopCommandBar';
 import { NanoSetupBanner } from './components/NanoSetupBanner';
 import { DocumentIntake } from './components/DocumentIntake';
@@ -49,7 +50,7 @@ function scrollToTestId(id: string) {
 
 export function App() {
   const { state, combinedSanitizedPayload, actions } = useWorkbenchStore();
-  const isZh = state.locale === 'zh-TW';
+  const t = translator(state.locale);
   const [demoStep, setDemoStep] = useState<number | null>(null);
   const [intakeNotice, setIntakeNotice] = useState<string | null>(null);
 
@@ -159,7 +160,7 @@ export function App() {
               type="button"
               onClick={actions.dismissError}
               className="text-[#BE123C]/70 hover:text-[#BE123C]"
-              aria-label={isZh ? '關閉錯誤訊息' : 'Dismiss error'}
+              aria-label={t(UI.app.dismissError)}
             >
               <X className="h-4 w-4" />
             </button>
@@ -184,12 +185,8 @@ export function App() {
         >
           <p className="text-[13px] leading-relaxed text-[#141518]">
             {demoStep !== null
-              ? isZh
-                ? GUIDED_STEPS[demoStep].zh
-                : GUIDED_STEPS[demoStep].en
-              : isZh
-                ? '想再看一次？30 秒導覽會從載入範例一路跑到簽約決定。'
-                : 'Want the walkthrough? The 30-second guided demo runs from sample to decision.'}
+              ? t(GUIDED_STEPS[demoStep])
+              : t(UI.app.demoPrompt)}
           </p>
           {demoStep === null ? (
             <button
@@ -199,7 +196,7 @@ export function App() {
               className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md bg-[#0F766E] px-3.5 py-1.5 text-[13px] font-medium text-[#FFFFFF] active:translate-y-px disabled:opacity-50 sm:min-h-[36px]"
             >
               <PlayCircle className="h-4 w-4" />
-              <span>{isZh ? '開始導覽' : 'Guided demo'}</span>
+              <span>{t(UI.app.guidedDemo)}</span>
             </button>
           ) : (
             <button
@@ -211,7 +208,7 @@ export function App() {
               className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md border border-[#E2E5EA] bg-[#FFFFFF] px-3.5 py-1.5 text-[13px] font-medium text-[#141518] sm:min-h-[36px]"
             >
               <Square className="h-3.5 w-3.5" />
-              <span>{isZh ? '結束導覽' : 'Stop'}</span>
+              <span>{t(UI.app.stopDemo)}</span>
             </button>
           )}
         </div>
@@ -220,11 +217,9 @@ export function App() {
         {intakeNotice && (
           <div className="flex items-start justify-between gap-3 rounded-md border border-[#0F766E]/30 bg-[#F0FDFA] px-4 py-2.5 text-[13px] text-[#0F766E]">
             <span>
-              {isZh
-                ? `已收到「${intakeNotice}」，正在本機遮蔽。要上雲前會先請你確認。`
-                : `Received "${intakeNotice}". It is being masked on this device; nothing goes to the cloud until you ask.`}
+              {t(UI.app.intakeReceived(intakeNotice))}
             </span>
-            <button type="button" onClick={() => setIntakeNotice(null)} aria-label={isZh ? '關閉' : 'Dismiss'}>
+            <button type="button" onClick={() => setIntakeNotice(null)} aria-label={t(UI.app.dismiss)}>
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -244,7 +239,7 @@ export function App() {
                 className="inline-flex min-h-[40px] shrink-0 items-center gap-1 rounded-md border border-[#0F766E]/40 bg-[#FFFFFF] px-3 font-sans text-[12.5px] font-medium text-[#0F766E] sm:min-h-[30px]"
               >
                 <Square className="h-3 w-3" />
-                {isZh ? '取消' : 'Cancel'}
+                {t(UI.app.cancel)}
               </button>
             )}
           </div>
@@ -253,11 +248,9 @@ export function App() {
         {state.cancelledNotice && state.stage === 'idle' && (
           <div className="flex items-start justify-between gap-3 rounded-md border border-[#E2E5EA] bg-[#FFFFFF] px-4 py-2.5 text-[13px] text-[#141518]">
             <span>
-              {isZh
-                ? '已取消。沒有再送出任何內容；需要時可以重新執行。'
-                : 'Cancelled. Nothing more was sent; run it again whenever you are ready.'}
+              {t(UI.app.cancelled)}
             </span>
-            <button type="button" onClick={actions.dismissCancelledNotice} aria-label={isZh ? '關閉' : 'Dismiss'}>
+            <button type="button" onClick={actions.dismissCancelledNotice} aria-label={t(UI.app.dismiss)}>
               <X className="h-4 w-4" />
             </button>
           </div>

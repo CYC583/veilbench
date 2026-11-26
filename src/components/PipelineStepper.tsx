@@ -1,6 +1,7 @@
 import { Check, Cloud, Cpu, Lock, ShieldAlert, ShieldCheck } from 'lucide-react';
 import type { ActualInferenceSource } from '../types/hybrid';
 import type { SupportedLocale } from '../types/audit';
+import { UI, translator } from '../i18n/ui';
 
 type StepState = 'done' | 'active' | 'blocked' | 'failed' | 'todo';
 
@@ -37,44 +38,44 @@ function SourceTag({ source }: { source: ActualInferenceSource }) {
 
 /** The 4-stage hybrid pipeline at a glance, with the SDK-reported inference source per step. */
 export function PipelineStepper(props: PipelineStepperProps) {
-  const isZh = props.locale === 'zh-TW';
+  const t = translator(props.locale);
   const steps: Array<{ n: number; title: string; plan: string; state: StepState; source: ActualInferenceSource | null }> = [
     {
       n: 1,
-      title: isZh ? '本機脫敏氣閘' : 'Local Airlock',
+      title: t(UI.stepper.step1Title),
       plan: props.nanoAvailable
-        ? isZh ? '端側 · Gemini Nano' : 'ON-DEVICE · Gemini Nano'
-        : isZh ? '端側 · 確定性規則' : 'ON-DEVICE · Deterministic',
+        ? t(UI.stepper.planNano)
+        : t(UI.stepper.planDeterministic),
       state: props.stage1Source ? 'done' : 'active',
       source: props.stage1Source,
     },
     {
       n: 2,
-      title: isZh ? '快速風險篩檢' : 'Rapid Triage',
+      title: t(UI.stepper.step2Title),
       plan: props.nanoAvailable
-        ? isZh ? '端側 · Gemini Nano' : 'ON-DEVICE · Gemini Nano'
-        : isZh ? '雲端備援' : 'CLOUD FALLBACK',
+        ? t(UI.stepper.planNano)
+        : t(UI.stepper.planCloudFallback),
       state: props.triageRunning ? 'active' : props.triageSource ? 'done' : 'todo',
       source: props.triageSource,
     },
     {
       n: 3,
-      title: isZh ? '隱私閘門' : 'Privacy Gate',
+      title: t(UI.stepper.step3Title),
       plan: 'Layer 3 + SHA-256',
       state: props.gatePassed === null ? 'todo' : props.gatePassed ? 'done' : 'blocked',
       source: null,
     },
     {
       n: 4,
-      title: isZh ? '雲端深度稽核' : 'Cloud Deep Audit',
-      plan: isZh ? '雲端 · Gemini' : 'IN_CLOUD · Gemini',
+      title: t(UI.stepper.step4Title),
+      plan: t(UI.stepper.planCloudGemini),
       state: props.deepRunning ? 'active' : props.deepFailed ? 'failed' : props.deepSource ? 'done' : 'todo',
       source: props.deepSource,
     },
   ];
 
   return (
-    <nav aria-label={isZh ? 'Hybrid 處理流程' : 'Hybrid pipeline progress'}>
+    <nav aria-label={t(UI.stepper.navLabel)}>
       <ol className="grid grid-cols-2 gap-2 md:grid-cols-4">
         {steps.map((step) => (
           <li
@@ -103,9 +104,9 @@ export function PipelineStepper(props: PipelineStepperProps) {
                 {step.source ? (
                   <SourceTag source={step.source} />
                 ) : step.state === 'blocked' ? (
-                  isZh ? '已阻擋' : 'BLOCKED'
+                  t(UI.stepper.blocked)
                 ) : step.state === 'failed' ? (
-                  isZh ? '可重試' : 'RETRY AVAILABLE'
+                  t(UI.stepper.retry)
                 ) : (
                   step.plan
                 )}

@@ -16,13 +16,15 @@ import type {
 } from '../types/audit';
 import { SAMPLE_PACKS } from '../data/sampleDocuments';
 import { ACCEPTED_FILE_TYPES, IntakeError, readIntakeFile, type IntakeErrorCode } from '../services/fileIntake';
+import { UI, translator } from '../i18n/ui';
+import type { Msg } from '../i18n/ui/types';
 
-const INTAKE_ERROR_ZH: Record<IntakeErrorCode, string> = {
-  too_large: '檔案超過 20 MB，請改用較小的檔案。',
-  unsupported: '支援的檔案：PDF、Word（.docx）、文字檔、PNG 與 JPEG。',
-  unreadable: '這個檔案無法讀取（可能已加密或損毀）。',
-  empty: '這個檔案裡沒有可讀的文字。',
-};
+const INTAKE_ERROR_MSG = {
+  too_large: UI.intake.errTooLarge,
+  unsupported: UI.intake.errUnsupported,
+  unreadable: UI.intake.errUnreadable,
+  empty: UI.intake.errEmpty,
+} satisfies Record<IntakeErrorCode, Msg>;
 
 interface DocumentIntakeProps {
   documents: WorkbenchDocument[];
@@ -51,6 +53,7 @@ export function DocumentIntake({
   onRemoveDocument,
 }: DocumentIntakeProps) {
   const isZh = locale === 'zh-TW';
+  const t = translator(locale);
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<DocumentCategory>('contract');
@@ -74,24 +77,25 @@ export function DocumentIntake({
       setTitle(result.title);
       setImageDataUrl(result.imageDataUrl);
       setRawText(
-        result.text
-          || (isZh
-            ? `已上傳掃描件：${file.name}\n（可在此補充 OCR 筆記或敏感欄位，與影像像素塗黑一併處理。）`
-            : `Uploaded scan: ${file.name}\n(Add optional OCR notes or sensitive fields here to combine with visual pixel redaction.)`)
+        result.text || t(UI.intake.scanPlaceholder(file.name))
       );
       const info: string[] = [];
-      if (result.pages) info.push(isZh ? `已在本機讀取 ${result.pages} 頁` : `Read ${result.pages} page(s) on this device`);
-      if (result.scannedPdf) info.push(isZh ? '偵測為掃描檔，第 1 頁轉成圖片以便像素塗黑' : 'Looks scanned: page 1 was turned into an image for pixel redaction');
+      if (result.pages) info.push(t(UI.intake.pagesRead(result.pages)));
+      if (result.scannedPdf) info.push(t(UI.intake.scannedPdf));
       if (result.scaledFrom) {
-        info.push(isZh
-          ? `圖片已從 ${result.scaledFrom.width}×${result.scaledFrom.height} 縮小`
-          : `Image scaled down from ${result.scaledFrom.width}×${result.scaledFrom.height}`);
+        info.push(t(UI.intake.imageScaled(result.scaledFrom.width, result.scaledFrom.height)));
       }
       setIntakeInfo(info.length ? info.join(' · ') : null);
       setShowCustomForm(true);
     } catch (err) {
       const code: IntakeErrorCode = err instanceof IntakeError ? err.code : 'unreadable';
-      setIntakeError(isZh ? INTAKE_ERROR_ZH[code] : err instanceof Error ? err.message : 'This file could not be read.');
+      setIntakeError(
+        isZh
+          ? t(INTAKE_ERROR_MSG[code])
+          : err instanceof Error
+            ? err.message
+            : t(UI.intake.errUnreadable),
+      );
     } finally {
       setIsReading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -136,7 +140,7 @@ export function DocumentIntake({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-[11px] font-medium uppercase tracking-wider text-[#5C626E]">
-              {isZh ? '共享工作區文件' : 'Workspace Documents'} ({documents.length})
+              {t(UI.intake.workspaceDocs)} ({documents.length})
             </span>
             {documents.map((doc) => {
               const active = doc.id === activeDocId;
@@ -164,7 +168,7 @@ export function DocumentIntake({
                   <button
                     type="button"
                     onClick={() => onRemoveDocument(doc.id)}
-                    aria-label={isZh ? `移除 ${doc.title}` : `Remove ${doc.title}`}
+                    aria-label={t(UI.intake.removeDoc(doc.title))}
                     className="ml-1 rounded p-0.5 text-[#5C626E] hover:text-[#BE123C]"
                   >
                     <Trash2 className="h-3 w-3" />
@@ -182,7 +186,7 @@ export function DocumentIntake({
               className="inline-flex min-h-[34px] items-center gap-1.5 rounded-md border border-[#E2E5EA] bg-[#FFFFFF] px-3 py-1.5 text-[12px] font-medium text-[#141518] transition-colors hover:border-[#0F766E]/60 hover:text-[#0F766E] active:translate-y-px"
             >
               <Plus className="h-3.5 w-3.5" />
-              <span>{isZh ? '加入文件做跨檔稽核' : 'Add Document for Cross-Doc Audit'}</span>
+              <span>{t(UI.intake.addDoc)}</span>
             </button>
           </div>
         </div>
@@ -197,14 +201,10 @@ export function DocumentIntake({
           <div className="flex items-center justify-between gap-2">
             <div>
               <h1 className="text-[20px] font-semibold tracking-[-0.025em] text-[#141518]">
-                {isZh
-                  ? '本機零外洩隱私氣閘 — 開始稽核文件'
-                  : 'Inspect sensitive documents without leaking raw PII to the cloud.'}
+                {t(UI.intake.heading)}
               </h1>
               <p className="mt-1 max-w-[65ch] text-[14px] leading-relaxed text-[#5C626E]">
-                {isZh
-                  ? '給審閱客戶合約與報價單的自由工作者與小型工作室。選擇下方範例，或直接拖曳文字／掃描件；所有個資都會先在瀏覽器端以 3 層防禦鎖定與塗黑，再決定是否上雲。'
-                  : 'For freelancers and small studios reviewing client contracts and quotes. Load a sample below or drop your own text/image scan — every identifier, secret key and image region is redacted locally before any cloud escalation.'}
+                {t(UI.intake.intro)}
               </p>
             </div>
             {documents.length > 0 && (
@@ -213,14 +213,14 @@ export function DocumentIntake({
                 onClick={() => setShowCustomForm(false)}
                 className="rounded-md border border-[#E2E5EA] px-2.5 py-1 text-[12px] text-[#5C626E] hover:text-[#141518]"
               >
-                {isZh ? '返回工作區' : 'Back to Workspace'}
+                {t(UI.intake.backToWorkspace)}
               </button>
             )}
           </div>
 
           <div className="mt-4 space-y-2.5">
             <div className="font-mono text-[11px] font-medium uppercase tracking-wider text-[#5C626E]">
-              {isZh ? '一鍵載入評審示範包（含程式生成掃描圖）' : 'One-Click Evaluation Bundles (Zero Setup)'}
+              {t(UI.intake.bundlesTitle)}
             </div>
             {SAMPLE_PACKS.map((pack) => (
               <button
@@ -237,19 +237,17 @@ export function DocumentIntake({
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[14px] font-semibold text-[#141518]">
-                        {isZh ? pack.labelZh : pack.label}
+                        {t({ en: pack.label, zh: pack.labelZh })}
                       </span>
                       <span className="rounded border border-[#E2E5EA] bg-[#FFFFFF] px-1.5 py-0.5 font-mono text-[10px] uppercase text-[#5C626E]">
-                        {isZh
-                          ? `${pack.documents.length} 份文件`
-                          : `${pack.documents.length} ${pack.documents.length > 1 ? 'DOCS' : 'DOC'}`}
+                        {t(UI.intake.docCount(pack.documents.length))}
                       </span>
                     </div>
-                    <p className="mt-0.5 text-[13px] text-[#5C626E]">{isZh ? pack.subtitleZh : pack.subtitle}</p>
+                    <p className="mt-0.5 text-[13px] text-[#5C626E]">{t({ en: pack.subtitle, zh: pack.subtitleZh })}</p>
                   </div>
                 </div>
                 <span className="shrink-0 self-center font-mono text-[11px] font-medium text-[#0F766E] opacity-80 group-hover:opacity-100">
-                  {isZh ? '載入 →' : 'Load →'}
+                  {t(UI.intake.load)}
                 </span>
               </button>
             ))}
@@ -260,18 +258,18 @@ export function DocumentIntake({
           <form onSubmit={handleSubmit} className="flex h-full flex-col gap-3">
             <div className="flex items-center justify-between">
               <span className="font-mono text-[11px] font-medium uppercase tracking-wider text-[#5C626E]">
-                {isZh ? '上傳或貼上自訂文件' : 'Drop Scan or Paste Sensitive Text'}
+                {t(UI.intake.customTitle)}
               </span>
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value as DocumentCategory)}
-                aria-label={isZh ? '文件類別' : 'Document Category'}
+                aria-label={t(UI.intake.categoryLabel)}
                 className="rounded border border-[#E2E5EA] bg-[#FFFFFF] px-2 py-1 text-[12px] text-[#141518] focus:border-[#0F766E] focus:outline-none"
               >
-                <option value="contract">{isZh ? '合約／法務' : 'Contract / Legal'}</option>
-                <option value="medical">{isZh ? '醫療／檢驗' : 'Medical / Lab'}</option>
-                <option value="financial">{isZh ? '財務／發票' : 'Financial / Invoice'}</option>
-                <option value="custom">{isZh ? '其他' : 'Other'}</option>
+                <option value="contract">{t(UI.intake.catContract)}</option>
+                <option value="medical">{t(UI.intake.catMedical)}</option>
+                <option value="financial">{t(UI.intake.catFinancial)}</option>
+                <option value="custom">{t(UI.intake.catOther)}</option>
               </select>
             </div>
 
@@ -291,13 +289,7 @@ export function DocumentIntake({
             >
               <Upload className="h-4 w-4 text-[#0F766E]" />
               <span>
-                {imageDataUrl
-                  ? isZh
-                    ? '已附加圖片掃描件（點擊可更換）'
-                    : 'Image scan attached (click to replace)'
-                  : isZh
-                    ? '拖曳 PDF、Word、文字檔或 PNG／JPEG 至此，或點擊選擇（只在本機讀取）'
-                    : 'Drop a PDF, Word file, text file or PNG/JPEG here, or click to browse (read on this device only)'}
+                {imageDataUrl ? t(UI.intake.imageAttached) : t(UI.intake.dropHint)}
               </span>
               <input
                 ref={fileInputRef}
@@ -312,7 +304,7 @@ export function DocumentIntake({
                 role={intakeError ? 'alert' : 'status'}
                 className={`text-[12px] leading-snug ${intakeError ? 'text-[#BE123C]' : 'text-[#5C626E]'}`}
               >
-                {isReading ? (isZh ? '正在本機讀取檔案…' : 'Reading the file on this device…') : intakeError ?? intakeInfo}
+                {isReading ? t(UI.intake.reading) : intakeError ?? intakeInfo}
               </p>
             )}
 
@@ -321,14 +313,14 @@ export function DocumentIntake({
                 htmlFor="doc-title-input"
                 className="block text-[12px] font-medium text-[#141518]"
               >
-                {isZh ? '文件標題' : 'Document Title'}
+                {t(UI.intake.docTitleLabel)}
               </label>
               <input
                 id="doc-title-input"
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder={isZh ? '例如：顧問合約草稿.txt' : 'e.g. Consulting Agreement Draft.txt'}
+                placeholder={t(UI.intake.docTitlePlaceholder)}
                 className="mt-1 w-full rounded-md border border-[#E2E5EA] bg-[#FFFFFF] px-3 py-1.5 text-[13px] text-[#141518] placeholder:text-[#94A3B8] focus:border-[#0F766E] focus:outline-none"
               />
             </div>
@@ -338,18 +330,14 @@ export function DocumentIntake({
                 htmlFor="doc-text-input"
                 className="block text-[12px] font-medium text-[#141518]"
               >
-                {isZh ? '原始敏感內容（僅留存本機瀏覽器）' : 'Raw Local Content (Stays in Browser)'}
+                {t(UI.intake.rawLabel)}
               </label>
               <textarea
                 id="doc-text-input"
                 rows={5}
                 value={rawText}
                 onChange={(e) => setRawText(e.target.value)}
-                placeholder={
-                  isZh
-                    ? '貼上合約條款、Email、身分證號、IBAN 或 API 金鑰...'
-                    : 'Paste contract clauses, emails, SSN, IBAN, or API keys...'
-                }
+                placeholder={t(UI.intake.rawPlaceholder)}
                 className="mt-1 w-full flex-1 resize-y rounded-md border border-[#E2E5EA] bg-[#FFFFFF] p-2.5 font-mono text-[12px] leading-relaxed text-[#141518] placeholder:text-[#94A3B8] focus:border-[#0F766E] focus:outline-none"
               />
             </div>
@@ -361,7 +349,7 @@ export function DocumentIntake({
             >
               <ShieldAlert className="h-4 w-4" />
               <span>
-                {isZh ? '執行本機 3 層隱私氣閘掃描' : 'Run Local 3-Layer Privacy Airlock'}
+                {t(UI.intake.runAirlock)}
               </span>
             </button>
           </form>

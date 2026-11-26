@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Check, Cloud, Copy, Cpu, Mail, ShieldCheck, Sparkles } from 'lucide-react';
 import type { DecisionCard as DecisionCardModel } from '../core/decisionCard';
 import { pctBucket } from '../core/relationalHints';
+import { UI, translator } from '../i18n/ui';
 import type { DeepAuditResult, SupportedLocale, TriageResult } from '../types/audit';
 import type { ParallelRunState } from '../state/useWorkbenchStore';
 
@@ -101,7 +102,7 @@ function TimerRow(props: {
  * verdict, exact money gap computed on-device, clauses to fix, the email, and a way to verify.
  */
 export function DecisionCard(props: DecisionCardProps) {
-  const isZh = props.locale === 'zh-TW';
+  const t = translator(props.locale);
   const [copied, setCopied] = useState(false);
   const { card, deepAudit, parallelRun } = props;
   const running = props.triageRunning || props.deepRunning;
@@ -114,12 +115,10 @@ export function DecisionCard(props: DecisionCardProps) {
       >
         <div>
           <p className="text-[15px] font-semibold text-[#141518]">
-            {isZh ? '簽約前，先拿到一個決定' : 'Get your sign-or-fix decision'}
+            {t(UI.decision.ctaTitle)}
           </p>
           <p className="mt-0.5 text-[12.5px] leading-relaxed text-[#5C626E]">
-            {isZh
-              ? '裝置端初判與雲端深度稽核同時開跑；雲端只會收到代號與關係。'
-              : 'An on-device first verdict and the cloud deep audit start together. The cloud only receives tokens and relations.'}
+            {t(UI.decision.ctaBody)}
           </p>
         </div>
         <button
@@ -130,7 +129,7 @@ export function DecisionCard(props: DecisionCardProps) {
           className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-1.5 rounded-md bg-[#0F766E] px-4 text-[13.5px] font-medium text-[#FFFFFF] active:translate-y-px disabled:opacity-50"
         >
           <Sparkles className="h-4 w-4" />
-          {isZh ? '產生簽約決定' : 'Get the decision'}
+          {t(UI.decision.ctaButton)}
         </button>
       </section>
     );
@@ -162,17 +161,17 @@ export function DecisionCard(props: DecisionCardProps) {
     >
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E2E5EA] px-4 py-2.5">
         <span className="font-mono text-[11px] uppercase tracking-wide text-[#5C626E]">
-          {isZh ? '簽約前決定' : 'Before you sign'}
+          {t(UI.decision.beforeYouSign)}
         </span>
         <span className="font-mono text-[10.5px] uppercase text-[#5C626E]">
           {card?.basis === 'deep_audit'
-            ? isZh ? '跨文件稽核 · 已完成' : 'Cross-document audit · final'
+            ? t(UI.decision.basisFinal)
             : props.deepRunning
-              ? isZh ? '裝置端初判 · 雲端深度稽核進行中' : 'First verdict · deep audit running'
-              : isZh ? '初判' : 'First verdict'}
+              ? t(UI.decision.basisDeepRunning)
+              : t(UI.decision.firstVerdict)}
           {isCached && (
             <span className="ml-2 rounded-sm border border-[#B45309]/40 bg-[#FFFBEB] px-1.5 py-0.5 text-[#92400E]">
-              {isZh ? '預錄示範結果' : 'Cached demo result'}
+              {t(UI.decision.cachedDemo)}
             </span>
           )}
         </span>
@@ -186,22 +185,22 @@ export function DecisionCard(props: DecisionCardProps) {
                 data-testid="decision-verdict"
                 className={`inline-flex rounded-md border px-3 py-1.5 text-[19px] font-semibold leading-tight sm:text-[22px] ${verdict.tone}`}
               >
-                {isZh ? verdict.zh : verdict.en}
+                {t(verdict)}
               </p>
               <p className="mt-2 text-[12px] leading-relaxed text-[#5C626E]">
-                {isZh ? RULE[card.rule].zh : RULE[card.rule].en}
+                {t(RULE[card.rule])}
               </p>
             </div>
           ) : (
             <p className="text-[15px] text-[#5C626E]">
-              {isZh ? '正在產生初判…' : 'Working on the first verdict…'}
+              {t(UI.decision.workingOnVerdict)}
             </p>
           )}
 
           {gap ? (
             <div data-testid="decision-gap" className="rounded-md border border-[#E2E5EA] bg-[#F8F9FA] px-3.5 py-3">
               <p className="text-[12px] text-[#5C626E]">
-                {isZh ? '合約與報價對不上的金額' : 'Money your documents disagree on'}
+                {t(UI.decision.moneyDisagree)}
               </p>
               <p className="mt-0.5 font-mono text-[26px] font-semibold leading-tight tabular-nums text-[#141518]">
                 {gap.amountText}
@@ -209,14 +208,12 @@ export function DecisionCard(props: DecisionCardProps) {
               </p>
               <p className="mt-1.5 text-[12px] leading-relaxed text-[#5C626E]">
                 {props.rehydrateLocal(gap.a)} vs {props.rehydrateLocal(gap.b)} ·{' '}
-                {isZh
-                  ? `在這台裝置上算出。雲端只看到 ${gap.a} ${gap.diff > 0 ? '>' : '<'} ${gap.b}，差距 ${pctBucket(gap.pct)}。`
-                  : `Computed on this device. The cloud only saw ${gap.a} ${gap.diff > 0 ? '>' : '<'} ${gap.b}, a ${pctBucket(gap.pct)} gap.`}
+                {t(UI.decision.gapExplain(gap.a, gap.diff > 0 ? '>' : '<', gap.b, pctBucket(gap.pct)))}
               </p>
             </div>
           ) : props.deepRunning ? (
             <p className="text-[12.5px] text-[#5C626E]">
-              {isZh ? '確切金額落差會在雲端稽核回來後，於本機算出。' : 'The exact money gap is computed locally once the cloud audit returns.'}
+              {t(UI.decision.gapPending)}
             </p>
           ) : null}
 
@@ -224,8 +221,8 @@ export function DecisionCard(props: DecisionCardProps) {
             <div>
               <p className="text-[12px] font-medium text-[#141518]">
                 {card.basis === 'deep_audit'
-                  ? isZh ? `要修改的條款（${card.clausesToFix.length}）` : `Clauses to fix (${card.clausesToFix.length})`
-                  : isZh ? `初判發現的風險（${card.clausesToFix.length}）` : `Risks flagged so far (${card.clausesToFix.length})`}
+                  ? t(UI.decision.clausesToFix(card.clausesToFix.length))
+                  : t(UI.decision.risksFlagged(card.clausesToFix.length))}
               </p>
               <ul className="mt-1.5 space-y-1">
                 {card.clausesToFix.slice(0, 4).map((c, i) => (
@@ -244,21 +241,21 @@ export function DecisionCard(props: DecisionCardProps) {
             <div className="rounded-md border border-[#E2E5EA] px-3 py-1.5" data-testid="parallel-timers">
               <TimerRow
                 icon="device"
-                label={isZh ? '初判（先回來的答案）' : 'First verdict'}
+                label={t(UI.decision.timerFirstVerdict)}
                 ms={parallelRun.triageMs}
                 running={props.triageRunning}
                 startedAt={parallelRun.startedAt}
                 source={parallelRun.triageSource}
-                waitingLabel={isZh ? '執行中' : 'running'}
+                waitingLabel={t(UI.decision.timerRunning)}
               />
               <TimerRow
                 icon="cloud"
-                label={isZh ? '雲端深度稽核（只送代號）' : 'Cloud deep audit (tokens only)'}
+                label={t(UI.decision.timerCloud)}
                 ms={parallelRun.deepMs}
                 running={props.deepRunning}
                 startedAt={parallelRun.startedAt}
                 source={parallelRun.deepSource}
-                waitingLabel={isZh ? '執行中' : 'running'}
+                waitingLabel={t(UI.decision.timerRunning)}
               />
             </div>
           )}
@@ -266,7 +263,7 @@ export function DecisionCard(props: DecisionCardProps) {
           {email ? (
             <div className="rounded-md border border-[#E2E5EA]">
               <p className="border-b border-[#E2E5EA] px-3 py-1.5 text-[12px] font-medium text-[#141518]">
-                {isZh ? '準備寄出的信（以你的身分）' : 'Email to send (from you)'}
+                {t(UI.decision.emailTitle)}
               </p>
               <p className="max-h-[132px] overflow-y-auto whitespace-pre-wrap px-3 py-2 text-[12.5px] leading-relaxed text-[#141518]">
                 {email}
@@ -278,14 +275,14 @@ export function DecisionCard(props: DecisionCardProps) {
                   className="inline-flex min-h-[40px] items-center gap-1.5 rounded-md border border-[#E2E5EA] px-3 text-[12.5px] font-medium text-[#141518] sm:min-h-[32px]"
                 >
                   {copied ? <Check className="h-3.5 w-3.5 text-[#0F766E]" /> : <Copy className="h-3.5 w-3.5" />}
-                  {copied ? (isZh ? '已複製' : 'Copied') : isZh ? '複製' : 'Copy'}
+                  {copied ? t(UI.decision.copied) : t(UI.decision.copy)}
                 </button>
                 <a
                   href={`mailto:?subject=${encodeURIComponent('Contract review before signing')}&body=${encodeURIComponent(email)}`}
                   className="inline-flex min-h-[40px] items-center gap-1.5 rounded-md border border-[#E2E5EA] px-3 text-[12.5px] font-medium text-[#141518] sm:min-h-[32px]"
                 >
                   <Mail className="h-3.5 w-3.5" />
-                  {isZh ? '用郵件開啟' : 'Open in mail'}
+                  {t(UI.decision.openInMail)}
                 </a>
               </div>
             </div>
@@ -298,7 +295,7 @@ export function DecisionCard(props: DecisionCardProps) {
             className="inline-flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-md border border-[#0F766E]/40 bg-[#F0FDFA] px-3 text-[13px] font-medium text-[#0F766E] sm:min-h-[36px]"
           >
             <ShieldCheck className="h-4 w-4" />
-            {isZh ? '自己驗證送出了什麼' : 'Verify what left this device'}
+            {t(UI.decision.verify)}
           </button>
         </div>
       </div>

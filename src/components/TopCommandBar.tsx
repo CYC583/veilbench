@@ -12,6 +12,7 @@ import type {
   UserRoutingPreference,
 } from '../types/hybrid';
 import type { SupportedLocale } from '../types/audit';
+import { UI, translator } from '../i18n/ui';
 
 interface TopCommandBarProps {
   isOnline: boolean;
@@ -46,16 +47,16 @@ export function TopCommandBar({
   onToggleHistory,
   onClearWorkspace,
 }: TopCommandBarProps) {
-  const isZh = locale === 'zh-TW';
+  const t = translator(locale);
 
   const nanoLabel =
     nanoStatus === 'available'
-      ? isZh ? 'Gemini Nano 就緒' : 'Gemini Nano Ready'
+      ? t(UI.commandBar.nanoReady)
       : nanoStatus === 'downloading'
-        ? isZh ? 'Nano 下載中' : 'Nano Downloading'
+        ? t(UI.commandBar.nanoDownloading)
         : nanoStatus === 'downloadable'
-          ? isZh ? 'Nano 可下載' : 'Nano Downloadable'
-          : isZh ? '確定性防禦盾' : 'Deterministic Shield';
+          ? t(UI.commandBar.nanoDownloadable)
+          : t(UI.commandBar.deterministicShield);
 
   const nanoTone =
     nanoStatus === 'available'
@@ -79,9 +80,7 @@ export function TopCommandBar({
               </span>
             </div>
             <p className="hidden text-[12px] text-[#5C626E] sm:block">
-              {isZh
-                ? '多模態零外洩混合 AI 文件稽核與談判工作台'
-                : 'Multimodal On-Device Privacy Airlock & Cloud Redline Workbench'}
+              {t(UI.commandBar.tagline)}
             </p>
           </div>
         </div>
@@ -89,7 +88,7 @@ export function TopCommandBar({
         <div
           className="flex items-center rounded-md border border-[#E2E5EA] bg-[#F8F9FA] p-0.5"
           role="group"
-          aria-label={isZh ? 'Hybrid 推論路由模式' : 'Hybrid Inference Routing Mode'}
+          aria-label={t(UI.commandBar.routingModeAria)}
         >
           {PREF_OPTIONS.map((opt) => {
             const active = userPreference === opt.id;
@@ -104,7 +103,7 @@ export function TopCommandBar({
                     : 'text-[#5C626E] hover:text-[#141518]'
                 }`}
               >
-                {isZh ? opt.zhLabel : opt.label}
+                {t({ en: opt.label, zh: opt.zhLabel })}
               </button>
             );
           })}
@@ -119,7 +118,7 @@ export function TopCommandBar({
             }`}
           >
             {isOnline ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
-            <span>{isOnline ? (isZh ? '連線中' : 'ONLINE') : isZh ? '離線' : 'OFFLINE'}</span>
+            <span>{isOnline ? t(UI.commandBar.online) : t(UI.commandBar.offline)}</span>
           </span>
 
           <span
@@ -133,16 +132,12 @@ export function TopCommandBar({
             type="button"
             onClick={onToggleLocale}
             disabled={isTranslating}
-            title={
-              isZh
-                ? '切換英文／繁體中文（端側 AI 語意翻譯）'
-                : 'Toggle English / Traditional Chinese (On-Device AI Semantic Translation)'
-            }
+            title={t(UI.commandBar.toggleLocaleTitle)}
             className="inline-flex min-h-[34px] items-center gap-1.5 rounded-md border border-[#E2E5EA] bg-[#FFFFFF] px-2.5 py-1 text-[12px] font-medium text-[#141518] transition-colors hover:border-[#0F766E]/50 hover:text-[#0F766E] active:translate-y-px disabled:opacity-60"
           >
             <Languages className="h-3.5 w-3.5 text-[#0F766E]" />
             <span className="font-mono text-[11px]">
-              {isTranslating ? (isZh ? '翻譯中...' : 'Translating...') : locale === 'en' ? 'EN → 繁中' : '繁中 → EN'}
+              {isTranslating ? t(UI.commandBar.translating) : t(UI.commandBar.toggleLocaleLabel)}
             </span>
           </button>
 
@@ -152,7 +147,7 @@ export function TopCommandBar({
             className="inline-flex min-h-[34px] items-center gap-1.5 rounded-md border border-[#E2E5EA] bg-[#FFFFFF] px-2.5 py-1 text-[12px] font-medium text-[#141518] transition-colors hover:border-[#0F766E]/50 active:translate-y-px"
           >
             <History className="h-3.5 w-3.5 text-[#5C626E]" />
-            <span className="hidden sm:inline">{isZh ? '紀錄' : 'History'}</span>
+            <span className="hidden sm:inline">{t(UI.commandBar.history)}</span>
             {savedCount > 0 && (
               <span className="rounded bg-[#F1F3F5] px-1.5 py-0.5 font-mono text-[10px] text-[#5C626E]">
                 {savedCount}
@@ -164,12 +159,12 @@ export function TopCommandBar({
             <button
               type="button"
               onClick={onClearWorkspace}
-              title={isZh ? '重設工作區' : 'Reset Workspace'}
-              aria-label={isZh ? '重設工作區' : 'Reset workspace'}
+              title={t(UI.commandBar.resetTitle)}
+              aria-label={t(UI.commandBar.resetAria)}
               className="inline-flex min-h-[34px] items-center gap-1 rounded-md border border-[#E2E5EA] bg-[#FFFFFF] px-2 py-1 text-[12px] text-[#5C626E] transition-colors hover:border-[#BE123C]/40 hover:text-[#BE123C] active:translate-y-px"
             >
               <RotateCcw className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{locale === 'zh-TW' ? '重設' : 'Reset'}</span>
+              <span className="hidden sm:inline">{t(UI.commandBar.reset)}</span>
             </button>
           )}
         </div>

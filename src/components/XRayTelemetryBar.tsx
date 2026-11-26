@@ -18,6 +18,8 @@ import type { FirestoreSyncState } from '../services/sessionStore';
 import type { AppCheckUiStatus } from '../config/firebase';
 import { describeRemoteConfig } from '../config/remoteConfig';
 import type { SanitizedFirestoreSession, SupportedLocale } from '../types/audit';
+import { UI, translator } from '../i18n/ui';
+import type { Msg } from '../i18n/ui/types';
 
 interface XRayTelemetryBarProps {
   telemetry: TelemetryEvent[];
@@ -30,11 +32,19 @@ interface XRayTelemetryBarProps {
   locale: SupportedLocale;
 }
 
-const syncLabel: Record<FirestoreSyncState, { en: string; zh: string; tone: string }> = {
-  pending: { en: 'Pending sync (offline cache)', zh: '等待同步（離線快取）', tone: 'text-[#B45309] border-[#B45309]/30 bg-[#FFFBEB]' },
-  synced: { en: 'Synced to Cloud Firestore', zh: '已同步至 Cloud Firestore', tone: 'text-[#0F766E] border-[#0F766E]/30 bg-[#F0FDFA]' },
-  failed: { en: 'Sync failed — kept in local cache', zh: '同步失敗（保留於本機快取）', tone: 'text-[#BE123C] border-[#BE123C]/30 bg-[#FFF1F2]' },
-  local_only: { en: 'Local only (Firestore not configured)', zh: '僅本機（未設定 Firestore）', tone: 'text-[#475569] border-[#475569]/30 bg-[#F1F5F9]' },
+const syncLabel: Record<FirestoreSyncState, { msg: Msg; tone: string }> = {
+  pending: { msg: UI.telemetry.syncPending, tone: 'text-[#B45309] border-[#B45309]/30 bg-[#FFFBEB]' },
+  synced: { msg: UI.telemetry.syncSynced, tone: 'text-[#0F766E] border-[#0F766E]/30 bg-[#F0FDFA]' },
+  failed: { msg: UI.telemetry.syncFailed, tone: 'text-[#BE123C] border-[#BE123C]/30 bg-[#FFF1F2]' },
+  local_only: { msg: UI.telemetry.syncLocalOnly, tone: 'text-[#475569] border-[#475569]/30 bg-[#F1F5F9]' },
+};
+
+const appCheckMsg: Record<AppCheckUiStatus, Msg> = {
+  verified: UI.telemetry.appCheckVerified,
+  debug: UI.telemetry.appCheckDebug,
+  pending: UI.telemetry.appCheckPending,
+  failed: UI.telemetry.appCheckFailed,
+  unconfigured: UI.telemetry.appCheckUnconfigured,
 };
 
 type XRayTab = 'telemetry' | 'vault' | 'firestore' | 'remote_config';
@@ -61,7 +71,7 @@ export function XRayTelemetryBar({
   const [revealVault, setRevealVault] = useState(false);
   const [rcRefreshing, setRcRefreshing] = useState(false);
   const rcParams = activeTab === 'remote_config' ? describeRemoteConfig() : [];
-  const isZh = locale === 'zh-TW';
+  const t = translator(locale);
 
   const localCalls = telemetry.filter(
     (e) => e.actualSource === 'ON_DEVICE' || e.actualSource === 'LOCAL_DETERMINISTIC'
@@ -75,30 +85,13 @@ export function XRayTelemetryBar({
   const latestEvent = telemetry[0];
   const vaultEntries = Object.values(vault.byToken);
 
-  const appCheckLabel = (
-    isZh
-      ? {
-          verified: 'App Check：已驗證',
-          debug: 'App Check：除錯模式',
-          pending: 'App Check：驗證中...',
-          failed: 'App Check：失敗',
-          unconfigured: 'App Check：未設定',
-        }
-      : {
-          verified: 'App Check: Verified',
-          debug: 'App Check: Debug',
-          pending: 'App Check: Verifying...',
-          failed: 'App Check: Failed',
-          unconfigured: 'App Check: Not configured',
-        }
-  )[appCheckStatus];
+  const appCheckLabel = t(appCheckMsg[appCheckStatus]);
 
   const statusLabel = (status: string) => {
-    if (!isZh) return status.toUpperCase();
-    if (status === 'ok') return '成功';
-    if (status === 'error') return '錯誤';
-    if (status === 'blocked') return '已阻擋';
-    if (status === 'cached') return '快取';
+    if (status === 'ok') return t(UI.telemetry.statusOk);
+    if (status === 'error') return t(UI.telemetry.statusError);
+    if (status === 'blocked') return t(UI.telemetry.statusBlocked);
+    if (status === 'cached') return t(UI.telemetry.statusCached);
     return status.toUpperCase();
   };
 
@@ -114,7 +107,7 @@ export function XRayTelemetryBar({
           >
             <Activity className="h-4 w-4 text-[#0F766E]" />
             <span className="font-mono uppercase tracking-wider">
-              {isZh ? 'Hybrid AI X-Ray 遙測透視' : 'Hybrid AI X-Ray Telemetry'}
+              {t(UI.telemetry.title)}
             </span>
             {expanded ? (
               <ChevronDown className="h-4 w-4 text-[#5C626E]" />
@@ -127,25 +120,21 @@ export function XRayTelemetryBar({
           <div className="flex flex-wrap items-center gap-3 font-mono text-[11px] text-[#5C626E]">
             <span className="inline-flex items-center gap-1 text-[#0F766E]">
               <Cpu className="h-3.5 w-3.5" />
-              <span>{isZh ? '本機／節省' : 'Local/Saved'}: {localCalls}</span>
+              <span>{t(UI.telemetry.localSaved)}: {localCalls}</span>
             </span>
             <span className="inline-flex items-center gap-1 text-[#B45309]">
               <Cloud className="h-3.5 w-3.5" />
-              <span>{isZh ? '雲端' : 'Cloud'}: {cloudCalls}</span>
+              <span>{t(UI.telemetry.cloud)}: {cloudCalls}</span>
             </span>
             <span
               className="inline-flex items-center gap-1 text-[#5C626E]"
-              title={
-                isZh
-                  ? '本工作階段雲端呼叫實際消耗的 token（SDK usageMetadata）'
-                  : 'Metered cloud tokens this session (SDK usageMetadata)'
-              }
+              title={t(UI.telemetry.cloudTokensHint)}
             >
-              <span>{isZh ? '雲端 token' : 'Cloud tokens'}: {cloudTokens.toLocaleString()}</span>
+              <span>{t(UI.telemetry.cloudTokens)}: {cloudTokens.toLocaleString()}</span>
             </span>
             {latestEvent && (
               <span className="hidden sm:inline">
-                {isZh ? '最近' : 'Last'}: <strong>{latestEvent.actualSource}</strong> ({latestEvent.latencyMs}ms)
+                {t(UI.telemetry.last)}: <strong>{latestEvent.actualSource}</strong> ({latestEvent.latencyMs}ms)
               </span>
             )}
             <span
@@ -187,7 +176,7 @@ export function XRayTelemetryBar({
                 }`}
               >
                 <Activity className="h-3.5 w-3.5" />
-                <span>{isZh ? '推論紀錄' : 'Inference Log'} ({telemetry.length})</span>
+                <span>{t(UI.telemetry.tabInferenceLog)} ({telemetry.length})</span>
               </button>
 
               <button
@@ -200,7 +189,7 @@ export function XRayTelemetryBar({
                 }`}
               >
                 <Lock className="h-3.5 w-3.5" />
-                <span>{isZh ? '本機共享金庫' : 'Local Shared Vault'} ({vaultEntries.length})</span>
+                <span>{t(UI.telemetry.tabVault)} ({vaultEntries.length})</span>
               </button>
 
               <button
@@ -213,7 +202,7 @@ export function XRayTelemetryBar({
                 }`}
               >
                 <Database className="h-3.5 w-3.5" />
-                <span>{isZh ? 'Cloud Firestore 零 PII JSON' : 'Cloud Firestore Zero-PII JSON'}</span>
+                <span>{t(UI.telemetry.tabFirestore)}</span>
               </button>
 
               <button
@@ -235,23 +224,21 @@ export function XRayTelemetryBar({
                 <>
                   {telemetry.length === 0 ? (
                     <p className="font-mono text-[11.5px] text-[#5C626E]">
-                      {isZh
-                        ? '尚無推論事件。載入範例文件組即可觀察即時 Hybrid 遙測。'
-                        : 'No inference events recorded yet. Load a sample bundle to observe live hybrid telemetry.'}
+                      {t(UI.telemetry.noEvents)}
                     </p>
                   ) : (
                     <table className="w-full min-w-[640px] text-left font-mono text-[11px]">
                       <thead className="border-b border-[#E2E5EA] text-[#5C626E]">
                         <tr>
-                          <th className="pb-1.5 pr-3">{isZh ? '任務' : 'Task'}</th>
-                          <th className="pb-1.5 pr-3">{isZh ? '請求模式' : 'Requested'}</th>
-                          <th className="pb-1.5 pr-3">{isZh ? '實際來源' : 'Actual Source'}</th>
-                          <th className="pb-1.5 pr-3">{isZh ? '狀態' : 'Status'}</th>
-                          <th className="pb-1.5 pr-3">{isZh ? '模型' : 'Model'}</th>
+                          <th className="pb-1.5 pr-3">{t(UI.telemetry.colTask)}</th>
+                          <th className="pb-1.5 pr-3">{t(UI.telemetry.colRequested)}</th>
+                          <th className="pb-1.5 pr-3">{t(UI.telemetry.colActualSource)}</th>
+                          <th className="pb-1.5 pr-3">{t(UI.telemetry.colStatus)}</th>
+                          <th className="pb-1.5 pr-3">{t(UI.telemetry.colModel)}</th>
                           <th className="pb-1.5 pr-3">Tokens</th>
-                          <th className="pb-1.5 pr-3">{isZh ? '延遲' : 'Latency'}</th>
+                          <th className="pb-1.5 pr-3">{t(UI.telemetry.colLatency)}</th>
                           <th className="pb-1.5 pr-3">App Check</th>
-                          <th className="pb-1.5">{isZh ? '備註' : 'Note'}</th>
+                          <th className="pb-1.5">{t(UI.telemetry.colNote)}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#F1F3F5] text-[#141518]">
@@ -296,7 +283,7 @@ export function XRayTelemetryBar({
                               title={evt.appCheckStatus === 'offline_bypass' ? 'No network request, so no App Check token is needed.' : undefined}
                             >
                               {/* `offline_bypass` means "no cloud request was made"; show it as not applicable so it never reads as a bypass. */}
-                              {evt.appCheckStatus === 'offline_bypass' ? (locale === 'zh-TW' ? '不適用（本機）' : 'n/a · local') : evt.appCheckStatus}
+                              {evt.appCheckStatus === 'offline_bypass' ? t(UI.telemetry.appCheckNa) : evt.appCheckStatus}
                             </td>
                             <td className="py-1.5 text-[#5C626E]">{evt.note ?? '—'}</td>
                           </tr>
@@ -311,17 +298,13 @@ export function XRayTelemetryBar({
                 <>
                   {vaultEntries.length === 0 ? (
                     <p className="font-mono text-[11.5px] text-[#5C626E]">
-                      {isZh
-                        ? '本機共享金庫目前是空的。所有偵測到的 PII 對應僅保存在瀏覽器記憶體中。'
-                        : 'Local Shared Vault is empty. All detected PII mappings stay strictly in browser RAM.'}
+                      {t(UI.telemetry.vaultEmpty)}
                     </p>
                   ) : (
                     <>
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                       <p className="font-mono text-[11px] text-[#5C626E]">
-                        {isZh
-                          ? '原始值只存在瀏覽器記憶體，預設遮罩顯示。'
-                          : 'Raw values live only in browser memory and are masked by default.'}
+                        {t(UI.telemetry.vaultNote)}
                       </p>
                       <button
                         type="button"
@@ -331,9 +314,7 @@ export function XRayTelemetryBar({
                       >
                         {revealVault ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                         <span>
-                          {revealVault
-                            ? isZh ? '遮罩原始值' : 'Mask raw values'
-                            : isZh ? '顯示原始值（僅本機）' : 'Reveal raw values (local only)'}
+                          {revealVault ? t(UI.telemetry.maskRaw) : t(UI.telemetry.revealRaw)}
                         </span>
                       </button>
                     </div>
@@ -364,12 +345,13 @@ export function XRayTelemetryBar({
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <p className="font-mono text-[11px] text-[#5C626E]">
                       {remoteConfig.fetchedAt
-                        ? isZh
-                          ? `取得時間 ${new Date(remoteConfig.fetchedAt).toLocaleTimeString()} · 來源：${remoteConfig.configSource}`
-                          : `Fetched ${new Date(remoteConfig.fetchedAt).toLocaleTimeString()} · source: ${remoteConfig.configSource}`
-                        : isZh
-                          ? `使用內建預設值（${remoteConfig.configSource}）`
-                          : `Using in-app defaults (${remoteConfig.configSource})`}
+                        ? t(
+                            UI.telemetry.fetched(
+                              new Date(remoteConfig.fetchedAt).toLocaleTimeString(),
+                              remoteConfig.configSource,
+                            ),
+                          )
+                        : t(UI.telemetry.usingDefaults(remoteConfig.configSource))}
                     </p>
                     <button
                       type="button"
@@ -384,20 +366,20 @@ export function XRayTelemetryBar({
                       }}
                       className="inline-flex min-h-[44px] items-center rounded border border-[#E2E5EA] bg-[#FFFFFF] px-2.5 py-1 font-mono text-[11px] text-[#141518] hover:border-[#0F766E]/50 disabled:opacity-50 sm:min-h-[30px]"
                     >
-                      {rcRefreshing ? (isZh ? '重新取得中...' : 'Refetching...') : isZh ? '重新取得' : 'Refetch'}
+                      {rcRefreshing ? t(UI.telemetry.refetching) : t(UI.telemetry.refetch)}
                     </button>
                   </div>
                   {rcParams.length === 0 ? (
                     <p className="font-mono text-[11.5px] text-[#5C626E]">
-                      {isZh ? '尚未設定 Remote Config。' : 'Remote Config is not configured.'}
+                      {t(UI.telemetry.rcNotConfigured)}
                     </p>
                   ) : (
                     <table className="w-full text-left font-mono text-[11px]">
                       <thead className="border-b border-[#E2E5EA] text-[#5C626E]">
                         <tr>
-                          <th className="pb-1.5 pr-3">{isZh ? '參數' : 'Parameter'}</th>
-                          <th className="pb-1.5 pr-3">{isZh ? '生效值' : 'Active value'}</th>
-                          <th className="pb-1.5">{isZh ? '來源' : 'Source'}</th>
+                          <th className="pb-1.5 pr-3">{t(UI.telemetry.colParameter)}</th>
+                          <th className="pb-1.5 pr-3">{t(UI.telemetry.colActiveValue)}</th>
+                          <th className="pb-1.5">{t(UI.telemetry.colSource)}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#F1F3F5]">
@@ -424,7 +406,7 @@ export function XRayTelemetryBar({
                     {firestoreSync === 'pending' && (
                       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
                     )}
-                    {isZh ? syncLabel[firestoreSync].zh : syncLabel[firestoreSync].en}
+                    {t(syncLabel[firestoreSync].msg)}
                   </span>
                 </div>
               )}
@@ -432,9 +414,7 @@ export function XRayTelemetryBar({
                 <pre className="font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-[#141518]">
                   {lastFirestorePayload
                     ? JSON.stringify(lastFirestorePayload, null, 2)
-                    : isZh
-                      ? '// 執行快速篩檢或雲端稽核後，即可檢視實際寫入 Cloud Firestore 的零 PII JSON（persistentLocalCache）。'
-                      : '// Run Rapid Triage or Cloud Audit to inspect the exact Zero-PII JSON persisted to Cloud Firestore (persistentLocalCache).'}
+                    : t(UI.telemetry.firestoreHint)}
                 </pre>
               )}
             </div>

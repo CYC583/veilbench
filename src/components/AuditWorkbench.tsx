@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import type { ActualInferenceSource } from '../types/hybrid';
 import { localizeRuntimeMessage } from '../i18n/runtimeMessages';
+import { UI, translator } from '../i18n/ui';
+import type { Msg } from '../i18n/ui/types';
 import { logHybridAnalyticsEvent } from '../config/firebase';
 import type {
   ChatTurn,
@@ -54,25 +56,26 @@ interface AuditWorkbenchProps {
   deepRunning?: boolean;
 }
 
-const failedStepLabel: Record<CloudFailureState['action'], { en: string; zh: string }> = {
-  triage: { en: 'Stage 2 Rapid Triage', zh: 'Stage 2 快速風險篩檢' },
-  deep_audit: { en: 'Stage 4 Cloud Redline Audit', zh: 'Stage 4 雲端紅線稽核' },
-  chat: { en: 'Follow-Up Chat', zh: '多輪追問' },
+const failedStepLabel: Record<CloudFailureState['action'], Msg> = {
+  triage: UI.workbench.stepTriage,
+  deep_audit: UI.workbench.stepDeepAudit,
+  chat: UI.workbench.stepChat,
 };
 
 function CloudFailureCard({
   failure,
-  isZh,
+  locale,
   isBusy,
   onRetry,
   onDismiss,
 }: {
   failure: CloudFailureState;
-  isZh: boolean;
+  locale: SupportedLocale;
   isBusy: boolean;
   onRetry: () => void;
   onDismiss: () => void;
 }) {
+  const t = translator(locale);
   const step = failedStepLabel[failure.action];
   return (
     <div
@@ -85,25 +88,24 @@ function CloudFailureCard({
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <h3 className="text-[14px] font-semibold text-[#141518]">
               {failure.partialPart
-                ? isZh
-                  ? `${step.zh} 部分完成：${failure.partialPart === 'playbook' ? '談判劇本與 Email' : '矛盾與紅線分析'}未完成`
-                  : `${step.en} partially completed — ${failure.partialPart === 'playbook' ? 'negotiation playbook & email' : 'contradiction & redline analysis'} missing`
-                : isZh
-                  ? `${step.zh} 未完成`
-                  : `${step.en} did not complete`}
+                ? t(
+                    UI.workbench.failurePartial(
+                      step,
+                      failure.partialPart === 'playbook'
+                        ? UI.workbench.partialPlaybook
+                        : UI.workbench.partialAnalysis,
+                    ),
+                  )
+                : t(UI.workbench.failureDidNotComplete(step))}
             </h3>
             <span className="font-mono text-[10.5px] text-[#B45309]">
-              {isZh
-                ? `嘗試 ${failure.attempts} 次`
-                : `${failure.attempts} ${failure.attempts === 1 ? 'ATTEMPT' : 'ATTEMPTS'}`}{' '}
+              {t(UI.workbench.attempts(failure.attempts))}{' '}
               · IN_CLOUD
             </span>
           </div>
           <p className="mt-1.5 text-[13px] leading-relaxed text-[#5C626E]">{failure.message}</p>
           <p className="mt-1 text-[12px] text-[#5C626E]">
-            {isZh
-              ? '本機脫敏、Local Vault 與 Layer 3 驗證結果都保留，重試只會送出同一份已脫敏內容。'
-              : 'Local redaction, the Local Vault and the Layer 3 proof are untouched. Retry resends the same sanitized payload.'}
+            {t(UI.workbench.failureReassurance)}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -113,14 +115,14 @@ function CloudFailureCard({
               className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md bg-[#0F766E] px-3.5 py-2 text-[13px] font-medium text-[#FFFFFF] transition-transform active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-[36px]"
             >
               <RotateCw className="h-3.5 w-3.5" />
-              <span>{isZh ? `重試 ${step.zh}` : `Retry ${step.en}`}</span>
+              <span>{t(UI.workbench.retryStep(step))}</span>
             </button>
             <button
               type="button"
               onClick={onDismiss}
               className="inline-flex min-h-[44px] items-center rounded-md border border-[#E2E5EA] bg-[#FFFFFF] px-3.5 py-2 text-[13px] font-medium text-[#141518] hover:border-[#B45309]/50 sm:min-h-[36px]"
             >
-              {isZh ? '關閉' : 'Dismiss'}
+              {t(UI.workbench.dismiss)}
             </button>
           </div>
         </div>
@@ -129,10 +131,15 @@ function CloudFailureCard({
   );
 }
 
-const severityZh: Record<RiskSeverity, string> = { high: '高', medium: '中', low: '低' };
+const severityMsg: Record<RiskSeverity, Msg> = {
+  high: UI.workbench.severityHigh,
+  medium: UI.workbench.severityMedium,
+  low: UI.workbench.severityLow,
+};
 
-function severityLabel(severity: RiskSeverity, isZh: boolean): string {
-  return isZh ? severityZh[severity] ?? severity : severity;
+function severityLabel(severity: RiskSeverity, locale: SupportedLocale): string {
+  const msg = severityMsg[severity];
+  return msg ? translator(locale)(msg) : severity;
 }
 
 function severityStyles(severity: RiskSeverity): string {
@@ -150,31 +157,26 @@ function severityStyles(severity: RiskSeverity): string {
 function CachedBadge({
   audit,
   part,
-  isZh = false,
+  locale = 'en',
 }: {
   audit: DeepAuditResult;
   part: 'analysis' | 'playbook';
-  isZh?: boolean;
+  locale?: SupportedLocale;
 }) {
+  const t = translator(locale);
   const info = audit.cacheInfo;
   const model = info
     ? part === 'analysis'
       ? info.analysisModel
       : info.playbookModel
-    : isZh
-      ? '雲端模型'
-      : 'cloud model';
+    : t(UI.workbench.cloudModel);
   const when = info ? new Date(info.recordedAt).toISOString().slice(0, 10) : '';
   return (
     <span
-      title={
-        isZh
-          ? `這是先前錄製的 ${model} 真實輸出（${when}）。即時雲端呼叫失敗，可按重試取得最新結果。`
-          : `Recorded real ${model} output (${when}). The live cloud call failed; use Retry for a fresh result.`
-      }
+      title={t(UI.workbench.cachedTitle(model, when))}
       className="inline-flex items-center gap-1 rounded border border-[#B45309]/40 bg-[#FFFBEB] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-[#B45309]"
     >
-      {isZh ? '快取示範結果' : 'Cached demo result'} · {model} · {when}
+      {t(UI.workbench.cachedDemoResult)} · {model} · {when}
     </span>
   );
 }
@@ -214,6 +216,7 @@ export function AuditWorkbench({
   triageRunning,
   deepRunning,
 }: AuditWorkbenchProps) {
+  const t = translator(locale);
   const isZh = locale === 'zh-TW';
   const [rehydrateView, setRehydrateView] = useState<boolean>(true);
   const [copiedEmail, setCopiedEmail] = useState<boolean>(false);
@@ -325,7 +328,7 @@ export function AuditWorkbench({
         <div className="flex items-center gap-2">
           <FileDiff className="h-4 w-4 text-[#0F766E]" />
           <h2 className="text-[14px] font-semibold tracking-[-0.02em] text-[#141518]">
-            {isZh ? '稽核分析與紅線談判工作台' : 'Audit Findings & Negotiation Workbench'}
+            {t(UI.workbench.title)}
           </h2>
         </div>
 
@@ -341,7 +344,7 @@ export function AuditWorkbench({
                   : 'text-[#5C626E] hover:text-[#141518]'
               }`}
             >
-              {isZh ? '本機還原視圖' : 'On-Device Re-hydrated'}
+              {t(UI.workbench.viewRehydrated)}
             </button>
             <button
               type="button"
@@ -352,7 +355,7 @@ export function AuditWorkbench({
                   : 'text-[#5C626E] hover:text-[#141518]'
               }`}
             >
-              {isZh ? '零個資脫敏視圖' : 'Zero-PII Sanitized'}
+              {t(UI.workbench.viewSanitized)}
             </button>
           </div>
 
@@ -362,7 +365,7 @@ export function AuditWorkbench({
             className="inline-flex min-h-[32px] items-center gap-1.5 rounded-md border border-[#E2E5EA] bg-[#FFFFFF] px-2.5 py-1 text-[12px] font-medium text-[#141518] hover:border-[#0F766E]/60 hover:text-[#0F766E]"
           >
             <Download className="h-3.5 w-3.5" />
-            <span>{isZh ? '匯出零個資報告 (.md)' : 'Export Zero-PII Report (.md)'}</span>
+            <span>{t(UI.workbench.exportReport)}</span>
           </button>
         </div>
       </div>
@@ -374,7 +377,7 @@ export function AuditWorkbench({
           {cloudFailure && stage === 'idle' && (
             <CloudFailureCard
               failure={{ ...cloudFailure, message: localizeRuntimeMessage(cloudFailure.message, locale) }}
-              isZh={isZh}
+              locale={locale}
               isBusy={stage !== 'idle'}
               onRetry={onRetryCloud}
               onDismiss={onDismissCloudFailure}
@@ -384,20 +387,16 @@ export function AuditWorkbench({
           {showIdle && (
             <div className="rounded-lg border border-dashed border-[#E2E5EA] bg-[#FFFFFF] p-5">
               <h3 className="text-[14px] font-semibold text-[#141518]">
-                {isZh ? '尚未執行 AI 分析' : 'No AI analysis yet'}
+                {t(UI.workbench.emptyTitle)}
               </h3>
               <ol className="mt-2 space-y-1.5 text-[13px] leading-relaxed text-[#5C626E]">
                 <li>
                   <span className="font-mono text-[11px] text-[#0F766E]">STAGE 2</span>{' '}
-                  {isZh
-                    ? '快速風險篩檢：Nano 可用時在裝置端執行，否則使用已脫敏內容走雲端備援。'
-                    : 'Rapid Triage runs on Gemini Nano when available, otherwise on the sanitized payload in the cloud.'}
+                  {t(UI.workbench.emptyStage2)}
                 </li>
                 <li>
                   <span className="font-mono text-[11px] text-[#B45309]">STAGE 4</span>{' '}
-                  {isZh
-                    ? '雲端深度稽核：通過 Layer 3 檢查後，才會把代號化內容送到 Cloud Gemini。'
-                    : 'Cloud Redline Audit sends only the Layer 3-verified, tokenized payload to Cloud Gemini.'}
+                  {t(UI.workbench.emptyStage4)}
                 </li>
               </ol>
             </div>
@@ -426,10 +425,10 @@ export function AuditWorkbench({
                   <span
                     className={`rounded border px-2 py-0.5 font-mono text-[11px] font-semibold uppercase ${severityStyles(triage.overallRisk)}`}
                   >
-                    {isZh ? `${severityLabel(triage.overallRisk, true)}風險` : `${triage.overallRisk} RISK`}
+                    {t(UI.workbench.overallRisk(triage.overallRisk, severityLabel(triage.overallRisk, 'zh-TW')))}
                   </span>
                   <h3 className="text-[14px] font-semibold text-[#141518]">
-                    {isZh ? 'Stage 2 快速風險篩檢' : 'Stage 2 Rapid Risk Triage'}
+                    {t(UI.workbench.triageTitle)}
                   </h3>
                 </div>
                 <SourceBadge source={triage.inferenceSource} />
@@ -454,7 +453,7 @@ export function AuditWorkbench({
                       <span
                         className={`rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase ${severityStyles(flag.severity)}`}
                       >
-                        {severityLabel(flag.severity, isZh)}
+                        {severityLabel(flag.severity, locale)}
                       </span>
                     </div>
                     <p className="mt-1 text-[13px] leading-relaxed text-[#5C626E]">
@@ -493,13 +492,11 @@ export function AuditWorkbench({
                 <div className="flex items-center gap-2">
                   <GitCompare className="h-4 w-4 text-[#BE123C]" />
                   <h3 className="text-[14px] font-semibold text-[#141518]">
-                    {isZh
-                      ? `跨文件矛盾稽核警示 (${deepAudit.contradictions.length})`
-                      : `Cross-Document Contradictions (${deepAudit.contradictions.length})`}
+                    {t(UI.workbench.contradictionsTitle(deepAudit.contradictions.length))}
                   </h3>
                 </div>
                 {deepAudit.cachedParts?.includes('analysis') ? (
-                  <CachedBadge audit={deepAudit} part="analysis" isZh={isZh} />
+                  <CachedBadge audit={deepAudit} part="analysis" locale={locale} />
                 ) : (
                   <SourceBadge source={deepAudit.inferenceSource} />
                 )}
@@ -521,14 +518,14 @@ export function AuditWorkbench({
                       <span
                         className={`rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase ${severityStyles(item.severity)}`}
                       >
-                        {severityLabel(item.severity, isZh)}
+                        {severityLabel(item.severity, locale)}
                       </span>
                     </div>
                     <p className="mt-1.5 text-[13px] leading-relaxed text-[#141518]">
                       {displayText(item.description)}
                     </p>
                     <p className="mt-1.5 text-[12px] font-medium text-[#0F766E]">
-                      {isZh ? '建議修正' : 'Recommended Fix'}: {displayText(item.recommendation)}
+                      {t(UI.workbench.recommendedFix)}: {displayText(item.recommendation)}
                     </p>
                   </div>
                 ))}
@@ -543,13 +540,11 @@ export function AuditWorkbench({
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4 text-[#B45309]" />
                   <h3 className="text-[14px] font-semibold text-[#141518]">
-                    {isZh
-                      ? `互動式紅線修訂建議 (${deepAudit.redlines.length})`
-                      : `Interactive Redline Diff (${deepAudit.redlines.length})`}
+                    {t(UI.workbench.redlinesTitle(deepAudit.redlines.length))}
                   </h3>
                 </div>
                 {deepAudit.cachedParts?.includes('analysis') ? (
-                  <CachedBadge audit={deepAudit} part="analysis" isZh={isZh} />
+                  <CachedBadge audit={deepAudit} part="analysis" locale={locale} />
                 ) : (
                   <SourceBadge source={deepAudit.inferenceSource} />
                 )}
@@ -568,7 +563,7 @@ export function AuditWorkbench({
                       <span
                         className={`rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase ${severityStyles(clause.severity)}`}
                       >
-                        {severityLabel(clause.severity, isZh)}
+                        {severityLabel(clause.severity, locale)}
                       </span>
                     </div>
                     <div className="space-y-2 p-3.5 font-mono text-[12px] leading-relaxed">
@@ -579,7 +574,7 @@ export function AuditWorkbench({
                         + {displayText(clause.proposedRevision)}
                       </div>
                       <p className="pt-1 font-sans text-[12.5px] text-[#5C626E]">
-                        <strong className="text-[#141518]">{isZh ? '理由：' : 'Rationale:'}</strong>{' '}
+                        <strong className="text-[#141518]">{t(UI.workbench.rationale)}</strong>{' '}
                         {displayText(clause.rationale)}
                       </p>
                     </div>
@@ -598,21 +593,15 @@ export function AuditWorkbench({
               <div className="rounded-lg border border-[#E2E5EA] bg-[#FFFFFF] p-5">
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="text-[14px] font-semibold text-[#141518]">
-                    {isZh ? '談判應對劇本' : 'Negotiation Playbook'}
+                    {t(UI.workbench.playbookTitle)}
                   </h3>
                   {deepAudit.cachedParts?.includes('playbook') && (
-                    <CachedBadge audit={deepAudit} part="playbook" isZh={isZh} />
+                    <CachedBadge audit={deepAudit} part="playbook" locale={locale} />
                   )}
                   <span className="inline-flex items-center gap-1 font-mono text-[10px] text-[#0F766E]">
                     <ShieldCheck className="h-3.5 w-3.5" />
                     <span>
-                      {rehydrateView
-                        ? isZh
-                          ? '本機還原'
-                          : 'LOCAL RE-HYDRATED'
-                        : isZh
-                          ? '零個資'
-                          : 'ZERO-PII'}
+                      {t(rehydrateView ? UI.workbench.localRehydrated : UI.workbench.zeroPii)}
                     </span>
                   </span>
                 </div>
@@ -625,7 +614,7 @@ export function AuditWorkbench({
                 {deepAudit.playbook.counterpartyPushback.length > 0 && (
                   <div className="mt-3.5 space-y-2.5">
                     <div className="font-mono text-[10.5px] font-semibold uppercase tracking-wider text-[#5C626E]">
-                      {isZh ? '預期反對意見與應對話術' : 'Anticipated Pushback & Counter-Scripts'}
+                      {t(UI.workbench.pushbackTitle)}
                     </div>
                     {deepAudit.playbook.counterpartyPushback.map((pb, idx) => (
                       <div
@@ -633,10 +622,10 @@ export function AuditWorkbench({
                         className="rounded-md border border-[#E2E5EA] bg-[#F8F9FA] p-3 text-[12.5px]"
                       >
                         <div className="font-medium text-[#141518]">
-                          {isZh ? '若對方說' : 'If they say'}: “{displayText(pb.objection)}”
+                          {t(UI.workbench.ifTheySay)}: “{displayText(pb.objection)}”
                         </div>
                         <div className="mt-1 text-[#0F766E]">
-                          {isZh ? '回應' : 'Respond'}: {displayText(pb.recommendedResponse)}
+                          {t(UI.workbench.respond)}: {displayText(pb.recommendedResponse)}
                         </div>
                       </div>
                     ))}
@@ -650,7 +639,7 @@ export function AuditWorkbench({
                   <div className="flex items-center gap-2">
                     <Mail className="h-4 w-4 text-[#0F766E]" />
                     <h3 className="text-[14px] font-semibold text-[#141518]">
-                      {isZh ? '一鍵還原談判 Email' : 'Ready-to-Send Negotiation Email'}
+                      {t(UI.workbench.emailTitle)}
                     </h3>
                   </div>
                   <div className="flex flex-wrap justify-end gap-1.5">
@@ -659,7 +648,7 @@ export function AuditWorkbench({
                     className="inline-flex min-h-[30px] items-center gap-1 rounded border border-[#E2E5EA] bg-[#F8F9FA] px-2.5 py-1 text-[11.5px] font-medium text-[#141518] hover:border-[#0F766E]/60 hover:text-[#0F766E]"
                   >
                     <Mail className="h-3.5 w-3.5" />
-                    <span>{isZh ? '用郵件 App 開啟' : 'Open in mail app'}</span>
+                    <span>{t(UI.workbench.openInMail)}</span>
                   </a>
                   <button
                     type="button"
@@ -669,12 +658,12 @@ export function AuditWorkbench({
                     {copiedEmail ? (
                       <>
                         <Check className="h-3.5 w-3.5 text-[#0F766E]" />
-                        <span>{isZh ? '已複製' : 'Copied'}</span>
+                        <span>{t(UI.workbench.copied)}</span>
                       </>
                     ) : (
                       <>
                         <Copy className="h-3.5 w-3.5" />
-                        <span>{isZh ? '複製' : 'Copy'}</span>
+                        <span>{t(UI.workbench.copy)}</span>
                       </>
                     )}
                   </button>
@@ -693,20 +682,18 @@ export function AuditWorkbench({
               <div className="flex items-center gap-2">
                 <MessageSquare className="h-4 w-4 text-[#0F766E]" />
                 <h3 className="text-[14px] font-semibold text-[#141518]">
-                  {isZh ? '多輪零外洩追問' : 'Zero-Leak Follow-Up Chat'}
+                  {t(UI.workbench.chatTitle)}
                 </h3>
               </div>
               <span className="font-mono text-[10px] text-[#5C626E]">
-                {isZh ? '輸入自動脫敏' : 'Auto-Redacts Input'}
+                {t(UI.workbench.autoRedacts)}
               </span>
             </div>
 
             <div className="mt-3 max-h-64 space-y-2.5 overflow-y-auto pr-1">
               {chatHistory.length === 0 ? (
                 <p className="rounded-md border border-dashed border-[#E2E5EA] bg-[#F8F9FA] p-3 text-[12px] text-[#5C626E]">
-                  {isZh
-                    ? '可針對條款細節、賠償上限或談判策略追問；您輸入的任何名字或金額都會先在本機自動脫敏後才送出。'
-                    : 'Ask follow-up questions on liability caps, IP carve-outs, or payment terms. Any names or amounts you type are redacted locally first.'}
+                  {t(UI.workbench.chatEmpty)}
                 </p>
               ) : (
                 chatHistory.map((turn) => (
@@ -720,13 +707,7 @@ export function AuditWorkbench({
                   >
                     <div className="mb-1 flex items-center justify-between font-mono text-[10px] uppercase text-[#5C626E]">
                       <span>
-                        {turn.role === 'user'
-                          ? isZh
-                            ? '您（本機）'
-                            : 'You (Local)'
-                          : isZh
-                            ? 'VeilBench 稽核員'
-                            : 'VeilBench Auditor'}
+                        {t(turn.role === 'user' ? UI.workbench.roleUser : UI.workbench.roleAuditor)}
                       </span>
                       {turn.inferenceSource && <SourceBadge source={turn.inferenceSource} />}
                     </div>
@@ -747,17 +728,13 @@ export function AuditWorkbench({
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 disabled={isSendingChat}
-                placeholder={
-                  isZh
-                    ? '例如：請幫我擬一段限制賠償上限為合約總額的條文...'
-                    : 'e.g. Draft a 1x fee liability cap clause...'
-                }
+                placeholder={t(UI.workbench.chatPlaceholder)}
                 className="flex-1 rounded-md border border-[#E2E5EA] bg-[#FFFFFF] px-3 py-2 text-[12.5px] text-[#141518] placeholder:text-[#94A3B8] focus:border-[#0F766E] focus:outline-none"
               />
               <button
                 type="submit"
                 disabled={isSendingChat || !chatInput.trim()}
-                aria-label={isZh ? '送出追問' : 'Send follow-up question'}
+                aria-label={t(UI.workbench.sendFollowUp)}
                 className="inline-flex min-h-[38px] items-center justify-center rounded-md bg-[#0F766E] px-3.5 text-white hover:bg-[#0D655E] active:translate-y-px disabled:opacity-45"
               >
                 <Send className="h-4 w-4" />

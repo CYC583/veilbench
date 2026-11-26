@@ -13,6 +13,7 @@ import type { PreFlightAssertion, VaultMap, ZeroLeakProof } from '../types/priva
 import type { SupportedLocale, WorkbenchDocument } from '../types/audit';
 import { DEEP_AUDIT_TASK_ANALYSIS, DEEP_AUDIT_TASK_PLAYBOOK, redactWithVault } from '../core';
 import { localizeRuntimeMessage } from '../i18n/runtimeMessages';
+import { UI, translator } from '../i18n/ui';
 
 interface PayloadInspectorModalProps {
   isOpen: boolean;
@@ -50,7 +51,7 @@ export function PayloadInspectorModal({
   useDialogA11y(dialogRef, isOpen, onClose);
   if (!isOpen) return null;
 
-  const isZh = locale === 'zh-TW';
+  const t = translator(locale);
   const passed = Boolean(preFlight?.passed);
   const redactedImages = documents.filter((d) => Boolean(d.redactedImageDataUrl));
 
@@ -59,7 +60,7 @@ export function PayloadInspectorModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-[#141518]/50 p-4 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
-      aria-label={isZh ? '即時送出封包檢視器' : 'Live Outbound Payload Inspector'}
+      aria-label={t(UI.inspector.dialogAria)}
     >
       <div
         ref={dialogRef}
@@ -71,21 +72,17 @@ export function PayloadInspectorModal({
             <Fingerprint className="h-5 w-5 text-[#0F766E]" />
             <div>
               <h2 className="text-[15px] font-semibold tracking-[-0.02em] text-[#141518]">
-                {isZh
-                  ? '送雲端前封包透視與 SHA-256 零外洩憑證'
-                  : 'Live Outbound Payload Inspector & SHA-256 Zero-Leak Proof'}
+                {t(UI.inspector.title)}
               </h2>
               <p className="text-[12px] text-[#5C626E]">
-                {isZh
-                  ? '以下為即將發送給 Cloud Gemini 的完整位元組內容（零原始個資）。'
-                  : 'Exact sanitized payload cleared for Cloud Gemini escalation. Raw Local Vault never leaves your browser.'}
+                {t(UI.inspector.subtitle)}
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label={isZh ? '關閉檢視器' : 'Close Inspector'}
+            aria-label={t(UI.inspector.closeAria)}
             className="rounded-md p-1.5 text-[#5C626E] hover:bg-[#F1F3F5] hover:text-[#141518]"
           >
             <X className="h-4 w-4" />
@@ -113,18 +110,12 @@ export function PayloadInspectorModal({
                   }`}
                 >
                   {passed
-                    ? isZh
-                      ? 'LAYER 3 預檢斷路器：通過（0 項外洩）'
-                      : 'LAYER 3 PRE-FLIGHT CIRCUIT BREAKER: PASSED (0 LEAKS)'
-                    : isZh
-                      ? `LAYER 3 斷路器已阻擋（發現 ${preFlight?.leaks.length ?? 0} 項外洩）`
-                      : `LAYER 3 CIRCUIT BREAKER BLOCKED (${preFlight?.leaks.length ?? 0} LEAKS FOUND)`}
+                    ? t(UI.inspector.circuitPassed)
+                    : t(UI.inspector.circuitBlocked(preFlight?.leaks.length ?? 0))}
                 </span>
               </div>
               <span className="font-mono text-[11px] text-[#5C626E]">
-                {isZh
-                  ? `已檢查 ${preFlight?.inspectedChars.toLocaleString() ?? 0} 字元`
-                  : `Inspected ${preFlight?.inspectedChars.toLocaleString() ?? 0} chars`}
+                {t(UI.inspector.inspectedChars(preFlight?.inspectedChars.toLocaleString() ?? 0))}
               </span>
             </div>
 
@@ -147,16 +138,16 @@ export function PayloadInspectorModal({
               <div className="mb-2 flex items-center justify-between">
                 <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-[#141518]">
                   <ShieldCheck className="h-3.5 w-3.5 text-[#0F766E]" />
-                  <span>{isZh ? 'Web Crypto SHA-256 邊界憑證' : 'Web Crypto SHA-256 Boundary Proof'}</span>
+                  <span>{t(UI.inspector.proofTitle)}</span>
                 </span>
                 <span className="font-mono text-[10px] text-[#5C626E]">
-                  {isZh ? '金庫項目' : 'Vault Entries'}: {zeroLeakProof.vaultEntriesCount}
+                  {t(UI.inspector.vaultEntries)}: {zeroLeakProof.vaultEntriesCount}
                 </span>
               </div>
               <div className="grid grid-cols-1 gap-2 font-mono text-[11px] sm:grid-cols-2">
                 <div className="rounded border border-[#E2E5EA] bg-[#FFFFFF] p-2">
                   <div className="text-[10px] uppercase text-[#5C626E]">
-                    {isZh ? '原始內容雜湊（僅留本機）' : 'Raw Local Hash (Kept Local)'}
+                    {t(UI.inspector.rawHashLabel)}
                   </div>
                   <div className="mt-0.5 break-all text-[#141518]">
                     {zeroLeakProof.rawContentHash}
@@ -164,7 +155,7 @@ export function PayloadInspectorModal({
                 </div>
                 <div className="rounded border border-[#0F766E]/30 bg-[#FFFFFF] p-2">
                   <div className="text-[10px] uppercase text-[#0F766E]">
-                    {isZh ? '脫敏送出雜湊（雲端）' : 'Sanitized Outbound Hash (Cloud)'}
+                    {t(UI.inspector.sanitizedHashLabel)}
                   </div>
                   <div className="mt-0.5 break-all text-[#141518]">
                     {zeroLeakProof.sanitizedPayloadHash}
@@ -177,7 +168,7 @@ export function PayloadInspectorModal({
           {redactedImages.length > 0 && (
             <div>
               <div className="mb-1.5 font-mono text-[11px] font-medium uppercase tracking-wider text-[#5C626E]">
-                {isZh ? '送出的像素塗黑影像附件' : 'Outbound Pixel-Burned Image Attachments'} ({redactedImages.length})
+                {t(UI.inspector.imageAttachments)} ({redactedImages.length})
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {redactedImages.map((doc) => (
@@ -190,11 +181,7 @@ export function PayloadInspectorModal({
                     </div>
                     <img
                       src={doc.redactedImageDataUrl}
-                      alt={
-                        isZh
-                          ? `送出的塗黑版 ${redactWithVault(doc.title, vault)}`
-                          : `Outbound redacted ${redactWithVault(doc.title, vault)}`
-                      }
+                      alt={t(UI.inspector.imageAlt(redactWithVault(doc.title, vault)))}
                       className="max-h-40 w-full rounded object-contain"
                     />
                     {(() => {
@@ -216,12 +203,10 @@ export function PayloadInspectorModal({
           <div>
             <div className="mb-1.5 flex items-center justify-between">
               <span className="font-mono text-[11px] font-medium uppercase tracking-wider text-[#5C626E]">
-                {isZh ? '實際送出的文字封包' : 'Exact Outbound Text Payload'}
+                {t(UI.inspector.payloadTitle)}
               </span>
               <span className="font-mono text-[11px] text-[#5C626E]">
-                {isZh
-                  ? `${combinedSanitizedPayload.length.toLocaleString()} 字元`
-                  : `${combinedSanitizedPayload.length.toLocaleString()} chars`}
+                {t(UI.inspector.charsCount(combinedSanitizedPayload.length.toLocaleString()))}
               </span>
             </div>
             <pre className="max-h-60 overflow-auto rounded-md border border-[#E2E5EA] bg-[#F1F3F5] p-3 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-[#141518]">
@@ -229,12 +214,10 @@ export function PayloadInspectorModal({
             </pre>
             <div className="mt-2 rounded-md border border-[#0F766E]/30 bg-[#F0FDFA] p-3">
               <p className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[#0F766E]">
-                {isZh ? '自行驗證' : 'Verify yourself'}
+                {t(UI.inspector.verifyTitle)}
               </p>
               <p className="mt-1 text-[12.5px] leading-relaxed text-[#141518]">
-                {isZh
-                  ? '複製上方內容後，在終端機執行下列指令，結果應與「送出雜湊」完全相同。'
-                  : 'Copy the payload above, then run this in a terminal — the digest must equal the outbound hash.'}
+                {t(UI.inspector.verifyBody)}
               </p>
               <code className="mt-1.5 block break-all rounded bg-[#FFFFFF] px-2 py-1 font-mono text-[11.5px] text-[#141518]">
                 shasum -a 256 veilbench-outbound-payload.txt
@@ -253,9 +236,7 @@ export function PayloadInspectorModal({
                   }}
                   className="inline-flex min-h-[44px] items-center rounded-md border border-[#0F766E]/40 bg-[#FFFFFF] px-3 text-[12px] font-medium text-[#0F766E] sm:min-h-[32px]"
                 >
-                  {copiedPayload
-                    ? isZh ? '已複製送出內容' : 'Payload copied'
-                    : isZh ? '複製送出內容' : 'Copy exact payload'}
+                  {copiedPayload ? t(UI.inspector.payloadCopied) : t(UI.inspector.copyPayload)}
                 </button>
                 <button
                   type="button"
@@ -272,7 +253,7 @@ export function PayloadInspectorModal({
                   }}
                   className="inline-flex min-h-[44px] items-center rounded-md border border-[#0F766E]/40 bg-[#FFFFFF] px-3 text-[12px] font-medium text-[#0F766E] sm:min-h-[32px]"
                 >
-                  {isZh ? '下載送出內容' : 'Download payload'}
+                  {t(UI.inspector.downloadPayload)}
                 </button>
                 {onTryLeak && passed && (
                   <button
@@ -280,16 +261,14 @@ export function PayloadInspectorModal({
                     onClick={onTryLeak}
                     className="inline-flex min-h-[44px] items-center rounded-md border border-[#BE123C]/40 bg-[#FFFFFF] px-3 text-[12px] font-medium text-[#BE123C] sm:min-h-[32px]"
                   >
-                    {isZh ? '試著外洩：關掉一個代號' : 'Try to leak: un-redact one token'}
+                    {t(UI.inspector.tryLeak)}
                   </button>
                 )}
               </div>
             </div>
             <details className="mt-2 rounded-md border border-[#E2E5EA] bg-[#FFFFFF] px-3 py-2">
               <summary className="cursor-pointer font-mono text-[11px] text-[#5C626E]">
-                {isZh
-                  ? 'Stage 4 分成兩個平行呼叫：各自在上方內容後附加一段固定任務指示（不含任何文件資料）'
-                  : 'Stage 4 runs as 2 parallel calls, each appending one fixed task instruction (no document data)'}
+                {t(UI.inspector.stage4Summary)}
               </summary>
               <pre className="mt-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-[#141518]">
                 {`${DEEP_AUDIT_TASK_ANALYSIS}\n\n${DEEP_AUDIT_TASK_PLAYBOOK}`}
@@ -297,7 +276,7 @@ export function PayloadInspectorModal({
             </details>
             <EgressLedgerSection
               ledger={ledger}
-              isZh={isZh}
+              locale={locale}
               onDownload={() => downloadOutboundJson(combinedSanitizedPayload, zeroLeakProof, ledger)}
             />
           </div>
@@ -305,13 +284,7 @@ export function PayloadInspectorModal({
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#E2E5EA] bg-[#F8F9FA] px-5 py-3">
           <span className="text-[12px] text-[#5C626E]">
-            {passed
-              ? isZh
-                ? '已通過所有零外洩斷路器驗證，可安全送出。'
-                : 'Verified zero-leak. Safe to escalate via Firebase AI Logic + App Check.'
-              : isZh
-                ? '請返回氣閘重新啟用被關閉的敏感詞脫敏。'
-                : 'Re-enable redaction toggles in the Privacy Airlock to clear the circuit breaker.'}
+            {passed ? t(UI.inspector.footerPassed) : t(UI.inspector.footerBlocked)}
           </span>
           <div className="flex items-center gap-2">
             <button
@@ -319,7 +292,7 @@ export function PayloadInspectorModal({
               onClick={onClose}
               className="min-h-[36px] rounded-md border border-[#E2E5EA] bg-[#FFFFFF] px-3.5 py-1.5 text-[12px] font-medium text-[#141518] hover:bg-[#F1F3F5]"
             >
-              {isZh ? '關閉' : 'Close'}
+              {t(UI.inspector.close)}
             </button>
             <button
               type="button"
@@ -328,9 +301,7 @@ export function PayloadInspectorModal({
               className="inline-flex min-h-[36px] items-center gap-1.5 rounded-md bg-[#0F766E] px-4 py-1.5 text-[12px] font-medium text-white hover:bg-[#0D655E] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-45"
             >
               <ArrowUpRight className="h-3.5 w-3.5" />
-              <span>
-                {isZh ? '核准並送雲端深度稽核' : 'Approve & Escalate to Cloud Gemini'}
-              </span>
+              <span>{t(UI.inspector.approve)}</span>
             </button>
           </div>
         </div>
@@ -368,11 +339,12 @@ function downloadOutboundJson(payload: string, proof: ZeroLeakProof | null, ledg
   URL.revokeObjectURL(url);
 }
 
-function EgressLedgerSection({ ledger, isZh, onDownload }: {
+function EgressLedgerSection({ ledger, locale, onDownload }: {
   ledger: EgressEntry[];
-  isZh: boolean;
+  locale: SupportedLocale;
   onDownload: () => void;
 }) {
+  const t = translator(locale);
   const aiCalls = ledger.filter(e => e.channel === 'ai_logic');
   const aiBytes = aiCalls.reduce((n, e) => n + e.bytes, 0);
   const unmatched = aiCalls.filter(e => e.carriesAuditedText === false).length;
@@ -382,12 +354,10 @@ function EgressLedgerSection({ ledger, isZh, onDownload }: {
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E2E5EA] px-3 py-2">
         <div className="min-w-0">
           <p className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[#141518]">
-            {isZh ? '網路出口帳本（本次工作階段）' : 'Network egress ledger (this session)'}
+            {t(UI.inspector.ledgerTitle)}
           </p>
           <p className="mt-0.5 text-[11.5px] leading-snug text-[#5C626E]">
-            {isZh
-              ? `每一個離開這個頁面的請求：目的地、位元組數、SHA-256。AI Logic：${aiCalls.length} 次、${aiBytes.toLocaleString()} bytes${unmatched ? `，其中 ${unmatched} 次未對到本頁的 Layer 3 內容（例如另行脫敏的追問）` : ''}。不記錄內容。`
-              : `Every request that left this page: destination, bytes, SHA-256. AI Logic: ${aiCalls.length} calls, ${aiBytes.toLocaleString()} bytes${unmatched ? `; ${unmatched} did not match this page's Layer 3 text (e.g. a separately sanitized follow-up)` : ''}. Bodies are never stored.`}
+            {t(UI.inspector.ledgerDesc(aiCalls.length, aiBytes.toLocaleString(), unmatched))}
           </p>
         </div>
         <button
@@ -395,23 +365,23 @@ function EgressLedgerSection({ ledger, isZh, onDownload }: {
           onClick={onDownload}
           className="inline-flex min-h-[44px] shrink-0 items-center rounded-md border border-[#0F766E]/40 bg-[#FFFFFF] px-3 text-[12px] font-medium text-[#0F766E] sm:min-h-[32px]"
         >
-          {isZh ? '下載 outbound.json' : 'Download outbound.json'}
+          {t(UI.inspector.downloadJson)}
         </button>
       </div>
       {recent.length === 0 ? (
         <p className="px-3 py-2 text-[12px] text-[#5C626E]">
-          {isZh ? '還沒有任何請求離開這個頁面。' : 'Nothing has left this page yet.'}
+          {t(UI.inspector.ledgerEmpty)}
         </p>
       ) : (
         <div className="max-h-44 overflow-auto">
           <table className="w-full min-w-[520px] text-left font-mono text-[11px]">
             <thead className="sticky top-0 bg-[#F8F9FA] text-[#5C626E]">
               <tr>
-                <th className="px-3 py-1.5 font-normal">{isZh ? '時間' : 'Time'}</th>
-                <th className="px-2 py-1.5 font-normal">{isZh ? '服務' : 'Service'}</th>
-                <th className="px-2 py-1.5 font-normal">{isZh ? '主機' : 'Host'}</th>
+                <th className="px-3 py-1.5 font-normal">{t(UI.inspector.colTime)}</th>
+                <th className="px-2 py-1.5 font-normal">{t(UI.inspector.colService)}</th>
+                <th className="px-2 py-1.5 font-normal">{t(UI.inspector.colHost)}</th>
                 <th className="px-2 py-1.5 text-right font-normal">Bytes</th>
-                <th className="px-3 py-1.5 font-normal">{isZh ? '已過 Layer 3' : 'Layer 3 text'}</th>
+                <th className="px-3 py-1.5 font-normal">{t(UI.inspector.colLayer3)}</th>
               </tr>
             </thead>
             <tbody>
@@ -422,7 +392,7 @@ function EgressLedgerSection({ ledger, isZh, onDownload }: {
                   <td className="max-w-[180px] truncate px-2 py-1 text-[#5C626E]">{e.host}</td>
                   <td className="px-2 py-1 text-right tabular-nums">{e.bytes.toLocaleString()}</td>
                   <td className="px-3 py-1">
-                    {e.carriesAuditedText === null ? '—' : e.carriesAuditedText ? (isZh ? '是' : 'yes') : (isZh ? '未對到' : 'no match')}
+                    {e.carriesAuditedText === null ? '—' : e.carriesAuditedText ? t(UI.inspector.yes) : t(UI.inspector.noMatch)}
                   </td>
                 </tr>
               ))}

@@ -23,6 +23,7 @@ import type {
 } from '../types/privacy';
 import type { SupportedLocale, WorkbenchDocument } from '../types/audit';
 import { resolveImageRegions } from '../core';
+import { UI, translator } from '../i18n/ui';
 
 interface PrivacyDiffPaneProps {
   document: WorkbenchDocument;
@@ -119,7 +120,7 @@ export function PrivacyDiffPane({
   onRunRapidTriage,
   onRunDeepAudit,
 }: PrivacyDiffPaneProps) {
-  const isZh = locale === 'zh-TW';
+  const t = translator(locale);
   const [drawingBoxes, setDrawingBoxes] = useState(false);
   const [mobilePane, setMobilePane] = useState<'raw' | 'safe'>('safe');
   const [zoomImage, setZoomImage] = useState(false);
@@ -145,27 +146,23 @@ export function PrivacyDiffPane({
         <div className="flex flex-wrap items-center gap-2.5">
           <div className="flex items-center gap-1.5 text-[14px] font-semibold tracking-[-0.02em] text-[#141518]">
             <Lock className="h-4 w-4 text-[#0F766E]" />
-            <span>{isZh ? '3 層本機隱私氣閘比對' : '3-Layer Local Privacy Airlock'}</span>
+            <span>{t(UI.privacyDiff.title)}</span>
           </div>
 
           <span className="rounded border border-[#E2E5EA] bg-[#F8F9FA] px-2 py-0.5 font-mono text-[11px] text-[#5C626E]">
-            {isZh
-              ? `共享金庫：${vaultSize} 個實體`
-              : `Shared Vault: ${vaultSize} ${vaultSize === 1 ? 'entity' : 'entities'}`}
+            {t(UI.privacyDiff.sharedVault(vaultSize))}
           </span>
 
           {passed ? (
             <span className="inline-flex items-center gap-1 rounded border border-[#0F766E]/30 bg-[#F0FDFA] px-2 py-0.5 font-mono text-[11px] font-medium text-[#0F766E]">
               <CheckCircle2 className="h-3.5 w-3.5" />
-              <span>{isZh ? '預檢通過 · 零外洩' : 'PRE-FLIGHT ZERO-LEAK PASS'}</span>
+              <span>{t(UI.privacyDiff.preflightPass)}</span>
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 rounded border border-[#BE123C]/30 bg-[#FFF1F2] px-2 py-0.5 font-mono text-[11px] font-medium text-[#BE123C]">
               <AlertTriangle className="h-3.5 w-3.5" />
               <span>
-                {isZh
-                  ? `偵測到外洩（${preFlight?.leaks.length ?? 0}）— 已阻擋上雲`
-                  : `LEAK DETECTED (${preFlight?.leaks.length ?? 0}) — CLOUD BLOCKED`}
+                {t(UI.privacyDiff.leakDetected(preFlight?.leaks.length ?? 0))}
               </span>
             </span>
           )}
@@ -179,7 +176,7 @@ export function PrivacyDiffPane({
             className="inline-flex min-h-[36px] items-center gap-1.5 rounded-md border border-[#E2E5EA] bg-[#FFFFFF] px-3 py-1.5 text-[12px] font-medium text-[#141518] transition-colors hover:border-[#0F766E]/60 hover:text-[#0F766E] active:translate-y-px"
           >
             <Eye className="h-3.5 w-3.5" />
-            <span>{isZh ? '檢視送雲端封包 & SHA-256' : 'Inspect Payload & Proof'}</span>
+            <span>{t(UI.privacyDiff.inspectPayload)}</span>
           </button>
 
           <button
@@ -190,13 +187,7 @@ export function PrivacyDiffPane({
           >
             <Zap className="h-3.5 w-3.5" />
             <span>
-              {nanoAvailable
-                ? isZh
-                  ? 'Stage 2 · 本機快速風險篩檢（Gemini Nano）'
-                  : 'Stage 2 · Rapid Triage (On-Device)'
-                : isZh
-                  ? 'Stage 2 · 快速風險篩檢（雲端備援）'
-                  : 'Stage 2 · Rapid Triage (Cloud Fallback)'}
+              {nanoAvailable ? t(UI.privacyDiff.stage2Nano) : t(UI.privacyDiff.stage2Cloud)}
             </span>
           </button>
 
@@ -205,29 +196,17 @@ export function PrivacyDiffPane({
             disabled={isBusy || !passed}
             onClick={onRunDeepAudit}
             title={
-              !passed
-                ? isZh
-                  ? 'Layer 3 預檢斷路器已阻擋，所有外洩項目脫敏後才能送出'
-                  : 'Blocked by Layer 3 Pre-Flight Circuit Breaker until all leaks are redacted'
-                : isZh
-                  ? '僅將嚴格脫敏後的封包送至雲端 Gemini'
-                  : 'Send strictly sanitized payload to Cloud Gemini'
+              !passed ? t(UI.privacyDiff.blockedByBreaker) : t(UI.privacyDiff.sendSanitized)
             }
             className="inline-flex min-h-[36px] items-center gap-1.5 rounded-md bg-[#0F766E] px-3.5 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-[#0D655E] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-45"
           >
             <ArrowUpRight className="h-3.5 w-3.5" />
             <span>
-              {totalDocuments > 1
-                ? isZh
-                  ? `Stage 4 · 跨文件矛盾與紅線稽核 (${totalDocuments} 份)`
-                  : `Stage 4 · Cross-Doc Redline Audit (${totalDocuments} Docs)`
-                : isZh
-                  ? 'Stage 4 · 送雲端深度紅線談判稽核'
-                  : 'Stage 4 · Cloud Redline Audit'}
+              {totalDocuments > 1 ? t(UI.privacyDiff.stage4Multi(totalDocuments)) : t(UI.privacyDiff.stage4Single)}
             </span>
             {!isOnline && (
               <span className="rounded bg-white/15 px-1 font-mono text-[10px]">
-                {isZh ? '離線' : 'OFFLINE'}
+                {t(UI.privacyDiff.offline)}
               </span>
             )}
           </button>
@@ -238,13 +217,11 @@ export function PrivacyDiffPane({
       <div className="border-b border-[#E2E5EA] bg-[#F8F9FA] px-4 py-2.5 sm:px-5">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="mr-1 font-mono text-[11px] font-medium uppercase tracking-wider text-[#5C626E]">
-            {isZh
-              ? `點擊切換脫敏 (${enabledCount}/${entities.length}):`
-              : `Toggle Redactions (${enabledCount}/${entities.length}):`}
+            {t(UI.privacyDiff.toggleRedactions(enabledCount, entities.length))}
           </span>
           {entities.length === 0 ? (
             <span className="text-[12px] text-[#5C626E]">
-              {isZh ? '本文件未偵測到額外敏感實體。' : 'No raw PII entities detected in this document.'}
+              {t(UI.privacyDiff.noEntities)}
             </span>
           ) : (
             entities.map((ent) => (
@@ -252,11 +229,7 @@ export function PrivacyDiffPane({
                 key={ent.id}
                 type="button"
                 onClick={() => onToggleEntity(doc.id, ent.id)}
-                title={
-                  isZh
-                    ? `層級：${ent.layer} | 原始值：${ent.originalValue}`
-                    : `Layer: ${ent.layer} | Original: ${ent.originalValue}`
-                }
+                title={t(UI.privacyDiff.entityTitle(ent.layer, ent.originalValue))}
                 className={`inline-flex items-center gap-1.5 rounded border px-2 py-0.5 font-mono text-[11px] transition-all active:translate-y-px ${
                   ent.enabled
                     ? 'border-[#0F766E]/35 bg-[#F0FDFA] text-[#0F766E]'
@@ -265,7 +238,7 @@ export function PrivacyDiffPane({
               >
                 <span>{ent.token}</span>
                 <span className="text-[10px] opacity-70">
-                  {ent.layer === 'gemini_nano' ? 'Nano' : ent.layer === 'user_manual' ? (isZh ? '手動' : 'Manual') : 'Regex'}
+                  {ent.layer === 'gemini_nano' ? 'Nano' : ent.layer === 'user_manual' ? t(UI.privacyDiff.manual) : 'Regex'}
                 </span>
               </button>
             ))
@@ -274,7 +247,7 @@ export function PrivacyDiffPane({
         {onAddCustomTerm && (
           <form onSubmit={(e) => void submitCustomTerm(e)} className="mt-2 flex flex-wrap items-center gap-1.5">
             <label htmlFor="custom-term" className="font-mono text-[11px] uppercase tracking-wider text-[#5C626E]">
-              {isZh ? '漏掉的詞：' : 'Missed something?'}
+              {t(UI.privacyDiff.missedTerm)}
             </label>
             <input
               id="custom-term"
@@ -283,34 +256,34 @@ export function PrivacyDiffPane({
                 setCustomTerm(e.target.value);
                 setCustomStatus(null);
               }}
-              placeholder={isZh ? '輸入要遮蔽的字詞，例如人名或專案代號' : 'Type a word to always mask, e.g. a name or project code'}
+              placeholder={t(UI.privacyDiff.termPlaceholder)}
               className="min-h-[36px] min-w-0 flex-1 rounded border border-[#E2E5EA] bg-[#FFFFFF] px-2.5 text-[12.5px] text-[#141518] sm:max-w-[320px]"
             />
             <select
-              aria-label={isZh ? '類型' : 'Type'}
+              aria-label={t(UI.privacyDiff.typeLabel)}
               value={customRole}
               onChange={(e) => setCustomRole(e.target.value as SemanticRole)}
               className="min-h-[36px] rounded border border-[#E2E5EA] bg-[#FFFFFF] px-2 text-[12.5px] text-[#141518]"
             >
-              <option value="PERSON_NAME">{isZh ? '人名' : 'Person'}</option>
-              <option value="ORGANIZATION">{isZh ? '公司／組織' : 'Organization'}</option>
-              <option value="ADDRESS">{isZh ? '地址' : 'Address'}</option>
-              <option value="OTHER_PII">{isZh ? '其他' : 'Other'}</option>
+              <option value="PERSON_NAME">{t(UI.privacyDiff.rolePerson)}</option>
+              <option value="ORGANIZATION">{t(UI.privacyDiff.roleOrganization)}</option>
+              <option value="ADDRESS">{t(UI.privacyDiff.roleAddress)}</option>
+              <option value="OTHER_PII">{t(UI.privacyDiff.roleOther)}</option>
             </select>
             <button
               type="submit"
               disabled={isBusy || customTerm.trim().length < 2}
               className="min-h-[36px] rounded border border-[#0F766E]/40 bg-[#FFFFFF] px-3 text-[12.5px] font-medium text-[#0F766E] disabled:opacity-50"
             >
-              {isZh ? '遮蔽' : 'Mask it'}
+              {t(UI.privacyDiff.maskIt)}
             </button>
             {customStatus && (
               <span role="status" className={`text-[12px] ${customStatus === 'added' ? 'text-[#0F766E]' : 'text-[#BE123C]'}`}>
                 {customStatus === 'added'
-                  ? isZh ? '已遮蔽，並重新檢查送出內容。' : 'Masked in every document; the outbound check was re-run.'
+                  ? t(UI.privacyDiff.statusAdded)
                   : customStatus === 'not_found'
-                    ? isZh ? '文件裡找不到這個詞。' : 'That word does not appear in these documents.'
-                    : isZh ? '請至少輸入 2 個字。' : 'Enter at least 2 characters.'}
+                    ? t(UI.privacyDiff.statusNotFound)
+                    : t(UI.privacyDiff.statusTooShort)}
               </span>
             )}
           </form>
@@ -324,14 +297,14 @@ export function PrivacyDiffPane({
             <div className="mb-2 flex items-center justify-between">
               <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-medium uppercase tracking-wider text-[#BE123C]">
                 <ShieldAlert className="h-3.5 w-3.5" />
-                <span>{isZh ? '本機原始掃描（絕不上傳）' : 'Original Local Scan (Never Uploaded)'}</span>
+                <span>{t(UI.privacyDiff.originalScan)}</span>
               </span>
-              <span className="font-mono text-[10px] text-[#5C626E]">{isZh ? '原始 PNG/JPEG' : 'RAW PNG/JPEG'}</span>
+              <span className="font-mono text-[10px] text-[#5C626E]">{t(UI.privacyDiff.rawImageType)}</span>
             </div>
             <div className="overflow-hidden rounded border border-[#E2E5EA] bg-[#F8F9FA]">
               <ImageRegionDrawer
                 src={doc.rawImageDataUrl}
-                alt={isZh ? `${doc.title} 的本機原始掃描` : `Original local scan of ${doc.title}`}
+                alt={t(UI.privacyDiff.originalScanAlt(doc.title))}
                 manualRegions={manualRegions.map((r) => r.bbox)}
                 drawing={drawingBoxes}
                 onAddRegion={(bbox) => onAddManualRegion?.(doc.id, bbox)}
@@ -351,9 +324,7 @@ export function PrivacyDiffPane({
                 >
                   <SquareDashedMousePointer className="h-3.5 w-3.5" />
                   <span>
-                    {drawingBoxes
-                      ? isZh ? '完成框選' : 'Done drawing'
-                      : isZh ? '手動框選塗黑' : 'Draw redaction box'}
+                    {drawingBoxes ? t(UI.privacyDiff.doneDrawing) : t(UI.privacyDiff.drawBox)}
                   </span>
                 </button>
                 <button
@@ -363,11 +334,11 @@ export function PrivacyDiffPane({
                   className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md border border-[#E2E5EA] bg-[#FFFFFF] px-3 py-1.5 text-[12px] font-medium text-[#141518] disabled:opacity-40 sm:min-h-[32px]"
                 >
                   <Undo2 className="h-3.5 w-3.5" />
-                  <span>{isZh ? `復原（${manualRegions.length}）` : `Undo (${manualRegions.length})`}</span>
+                  <span>{t(UI.privacyDiff.undo(manualRegions.length))}</span>
                 </button>
                 {drawingBoxes && (
                   <span className="text-[12px] text-[#5C626E]">
-                    {isZh ? '在上方圖片拖曳出要塗黑的範圍。' : 'Drag on the image to cover anything the detectors missed.'}
+                    {t(UI.privacyDiff.drawHint)}
                   </span>
                 )}
               </div>
@@ -378,12 +349,10 @@ export function PrivacyDiffPane({
             <div className="mb-2 flex items-center justify-between">
               <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-medium uppercase tracking-wider text-[#0F766E]">
                 <ShieldCheck className="h-3.5 w-3.5" />
-                <span>{isZh ? 'Canvas 像素塗黑安全影像' : 'Canvas Pixel-Burned Safe Image'}</span>
+                <span>{t(UI.privacyDiff.burnedImage)}</span>
               </span>
               <span className="font-mono text-[10px] text-[#0F766E]">
-                {isZh
-                  ? `已塗黑 ${resolveImageRegions(doc.imageRegions, entities).length} 個區域`
-                  : `${resolveImageRegions(doc.imageRegions, entities).length} REGIONS BURNED`}
+                {t(UI.privacyDiff.regionsBurned(resolveImageRegions(doc.imageRegions, entities).length))}
               </span>
             </div>
             <div className="overflow-hidden rounded border border-[#0F766E]/30 bg-[#F8F9FA]">
@@ -392,17 +361,17 @@ export function PrivacyDiffPane({
                   type="button"
                   onClick={() => setZoomImage(true)}
                   className="block w-full cursor-zoom-in"
-                  aria-label={isZh ? '全螢幕檢視塗黑影像' : 'View burned image full screen'}
+                  aria-label={t(UI.privacyDiff.viewBurnedFull)}
                 >
                   <img
                     src={doc.redactedImageDataUrl}
-                    alt={isZh ? `${doc.title} 的像素塗黑安全版本` : `Pixel-redacted safe version of ${doc.title}`}
+                    alt={t(UI.privacyDiff.safeImageAlt(doc.title))}
                     className="h-auto w-full object-contain"
                   />
                 </button>
               ) : (
                 <div className="flex h-48 items-center justify-center text-[12px] text-[#5C626E]">
-                  {isZh ? '像素塗黑預覽處理中' : 'Pixel redaction preview pending'}
+                  {t(UI.privacyDiff.previewPending)}
                 </div>
               )}
             </div>
@@ -415,9 +384,7 @@ export function PrivacyDiffPane({
                   onChange={(e) => onSetImageReviewed?.(doc.id, e.target.checked)}
                 />
                 <span>
-                  {isZh
-                    ? '我已檢查上方塗黑預覽，圖片中沒有殘留的姓名、帳號或其他識別資訊。未勾選前，Layer 3 不允許這張圖片離開裝置。'
-                    : 'I reviewed the burned preview above and no names, account numbers or other identifiers remain. Until checked, Layer 3 keeps this image on-device.'}
+                  {t(UI.privacyDiff.reviewConfirm)}
                 </span>
               </label>
             )}
@@ -442,9 +409,7 @@ export function PrivacyDiffPane({
                 : 'border-transparent text-[#5C626E]'
             }`}
           >
-            {pane === 'raw'
-              ? isZh ? '本機原文' : 'Raw (local)'
-              : isZh ? '送出內容（脫敏）' : 'Outbound (sanitized)'}
+            {pane === 'raw' ? t(UI.privacyDiff.tabRaw) : t(UI.privacyDiff.tabOutbound)}
           </button>
         ))}
       </div>
@@ -456,12 +421,10 @@ export function PrivacyDiffPane({
           <div className="mb-2.5 flex items-center justify-between">
             <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-[#BE123C]">
               <Shield className="h-3.5 w-3.5" />
-              <span>{isZh ? '本機原始文件（絕不離開瀏覽器）' : 'Raw Local Document (Stays in Browser)'}</span>
+              <span>{t(UI.privacyDiff.rawDocument)}</span>
             </span>
             <span className="font-mono text-[11px] text-[#5C626E]">
-              {isZh
-                ? `${doc.rawText.length.toLocaleString()} 字元`
-                : `${doc.rawText.length.toLocaleString()} chars`}
+              {t(UI.privacyDiff.chars(doc.rawText.length.toLocaleString()))}
             </span>
           </div>
           <div className="max-h-[320px] overflow-y-auto rounded-md border border-[#E2E5EA] bg-[#F8F9FA] p-3.5 text-[13px] leading-[1.65] whitespace-pre-wrap text-[#141518]">
@@ -474,9 +437,7 @@ export function PrivacyDiffPane({
           <div className="mb-2.5 flex items-center justify-between">
             <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-[#0F766E]">
               <ShieldCheck className="h-3.5 w-3.5" />
-              <span>
-                {isZh ? '脫敏安全封包（僅此版本允許送雲端）' : 'Sanitized Safe Payload (Cloud-Cleared)'}
-              </span>
+              <span>{t(UI.privacyDiff.safePayload)}</span>
             </span>
             {zeroLeakProof && (
               <span className="font-mono text-[11px] text-[#5C626E]">
@@ -493,13 +454,13 @@ export function PrivacyDiffPane({
         <div
           role="dialog"
           aria-modal="true"
-          aria-label={isZh ? '塗黑影像全螢幕檢視' : 'Burned image full screen'}
+          aria-label={t(UI.privacyDiff.burnedDialog)}
           className="fixed inset-0 z-50 flex items-center justify-center bg-[#141518]/80 p-4"
           onClick={() => setZoomImage(false)}
         >
           <img
             src={doc.redactedImageDataUrl}
-            alt={isZh ? `${doc.title} 的像素塗黑安全版本` : `Pixel-redacted safe version of ${doc.title}`}
+            alt={t(UI.privacyDiff.safeImageAlt(doc.title))}
             className="max-h-full max-w-full rounded bg-[#FFFFFF] object-contain"
           />
           <button
@@ -507,7 +468,7 @@ export function PrivacyDiffPane({
             onClick={() => setZoomImage(false)}
             className="absolute right-4 top-4 min-h-[44px] rounded-md bg-[#FFFFFF] px-3 text-[13px] font-medium text-[#141518]"
           >
-            {isZh ? '關閉' : 'Close'}
+            {t(UI.privacyDiff.close)}
           </button>
         </div>
       )}
