@@ -30,11 +30,7 @@ import {
   assertPayloadZeroLeak,
   createEmptyVault,
   decideHybridRoute,
-  generateZeroLeakProof,
-  sha256Hex,
-  parseNanoEntitiesDefensive,
   rehydrateWithLocalMath,
-  redactWithVault,
   buildRelationalHints,
   formatRelationalHints,
   runLocalAirlock,
@@ -56,7 +52,6 @@ import {
   detectChromeNanoStatus,
   runDeepRedlineAudit,
   runNegotiationChatTurn,
-  runOnDevicePiiScan,
   runRapidTriage,
   translateTextToZhTw,
   CloudStageError,
@@ -70,8 +65,6 @@ import { SAMPLE_PACKS, type SampleDocumentSpec } from '../data/sampleDocuments';
 import { SAMPLE_GOLDEN_AUDITS } from '../data/sampleGoldenAudits';
 import {
   burnImageForEntities,
-  buildOutboundPayload,
-  collectDisabledTokens,
   combineDocumentsText,
   fillFromGolden,
   isAbortError,
@@ -82,6 +75,14 @@ import {
 import { useRunController } from './useRunController';
 import { useTelemetryLog } from './useTelemetryLog';
 import { useSessionHistory } from './useSessionHistory';
+import { buildSecurityProof, buildSessionRecord, scanIncomingDocuments } from '../pipeline/airlock';
+import {
+  deepAuditTask,
+  layer3BlockedEvent,
+  layer3BlockedMessage,
+  mergeRetriedAudit,
+  routeSanitizedTask,
+} from '../pipeline/cloudAudit';
 
 export type WorkbenchStage =
   | 'idle'
@@ -280,48 +281,12 @@ export function useWorkbenchStore() {
       nextVault: VaultMap,
       nextEntitiesByDoc: Record<string, PiiEntity[]>
     ) => {
-      if (nextDocs.length === 0) {
-        setPreFlight(null);
-        setZeroLeakProof(null);
-        setOutboundPayload('');
-        return { assertion: null, proof: null, payload: '', disabledTokens: new Set<string>() };
-      }
-      const rawCombined = combineDocumentsText(nextDocs, 'rawText');
-      // Layer 3, the SHA-256 proof and the Payload Inspector all operate on the exact string Stage 4 sends.
-      const sanitizedCombined = buildOutboundPayload(nextDocs, nextVault);
-      const disabledTokens = collectDisabledTokens(nextEntitiesByDoc);
-      const textAssertion = assertPayloadZeroLeak(sanitizedCombined, nextVault, disabledTokens);
-      // Text checks cannot see pixels: an uploaded image stays on-device until a human confirms its burn preview.
-      const imageLeaks = nextDocs
-        .filter((d) => d.rawImageDataUrl && d.requiresImageReview && !d.imageReviewed)
-        .map((d) => ({
-          source: 'image_review_required' as const,
-          reason: `Uploaded image "${d.title}" has not been reviewed after pixel redaction.`,
-          matchedSnippet: d.title,
-        }));
-      const assertion = imageLeaks.length
-        ? { ...textAssertion, passed: false, leaks: [...textAssertion.leaks, ...imageLeaks] }
-        : textAssertion;
-      const outboundImageHashes = await Promise.all(
-        nextDocs
-          .filter((d) => d.redactedImageDataUrl)
-          .map(async (d) => ({
-            title: redactWithVault(d.title, nextVault),
-            sha256: await sha256Hex(d.redactedImageDataUrl!),
-          }))
-      );
-      const textProof = await generateZeroLeakProof({
-        rawCombinedText: rawCombined,
-        sanitizedCombinedText: sanitizedCombined,
-        vault: nextVault,
-        preFlight: assertion,
-      });
-      const proof = outboundImageHashes.length ? { ...textProof, outboundImageHashes } : textProof;
-      setPreFlight(assertion);
-      setZeroLeakProof(proof);
-      setOutboundPayload(sanitizedCombined);
+      const result = await buildSecurityProof(nextDocs, nextVault, nextEntitiesByDoc);
+      setPreFlight(result.assertion);
+      setZeroLeakProof(result.proof);
+      setOutboundPayload(result.payload);
       // disabledTokens is returned as-is so Stage 4 re-checks with exactly what Layer 3 used here.
-      return { assertion, proof, payload: sanitizedCombined, disabledTokens };
+      return result;
     },
     []
   );
@@ -337,26 +302,16 @@ export function useWorkbenchStore() {
         vault: VaultMap;
       }
     ) => {
-      const docs = override?.docs ?? documents;
-      const activeVault = override?.vault ?? vault;
-      const proof = override ? override.proof : zeroLeakProof;
-      // Firestore is a cloud boundary too: only Layer 3-verified sanitized excerpts may be persisted.
-      if (docs.length === 0 || !proof?.preFlightPassed) return;
-      const res = await saveSanitizedSession({
-        id: override?.sessionId ?? sessionId,
-        title: redactWithVault(docs[0].title, activeVault),
-        category: docs[0].category,
-        documentCount: docs.length,
-        sanitizedExcerpts: docs.map((d) => ({
-          documentId: d.id,
-          title: redactWithVault(d.title, activeVault),
-          sanitizedText: d.sanitizedText.slice(0, 1500),
-        })),
-        zeroLeakProofHash: proof.sanitizedPayloadHash,
-        triage: nextTriage ?? undefined,
-        deepAudit: nextDeepAudit ?? undefined,
-        updatedAt: new Date().toISOString(),
+      const record = buildSessionRecord({
+        sessionId: override?.sessionId ?? sessionId,
+        docs: override?.docs ?? documents,
+        vault: override?.vault ?? vault,
+        proof: override ? override.proof : zeroLeakProof,
+        triage: nextTriage,
+        deepAudit: nextDeepAudit,
       });
+      if (!record) return;
+      const res = await saveSanitizedSession(record);
       recordSaved(res.payload, res.synced);
     },
     [documents, recordSaved, sessionId, vault, zeroLeakProof]
@@ -396,69 +351,18 @@ export function useWorkbenchStore() {
         });
       }
 
-      const processedIncoming: WorkbenchDocument[] = [];
-
-      for (const docItem of incomingDocs) {
-        const decision = decideHybridRoute({
-        categories: documents.map((d) => d.category),
-          task: 'pii_scan',
-          charLength: docItem.rawText.length,
-          hasImage: Boolean(docItem.rawImageDataUrl),
-          isOnline,
-          nanoStatus,
-          userPreference,
-          remoteConfig,
-          isPayloadSanitized: false,
-        });
-        setLastRouterDecision(decision);
-
-        let nanoCandidates: ReturnType<typeof parseNanoEntitiesDefensive> = [];
-        if (decision.targetEngine === 'on_device') {
-          const scanRes = await runOnDevicePiiScan({
-            rawText: docItem.rawText,
-            rawImageDataUrl: docItem.rawImageDataUrl,
-            remoteConfig,
-            parseDefensive: parseNanoEntitiesDefensive,
-          });
-          nanoCandidates = scanRes.candidates;
-          pushTelemetry(scanRes.telemetry);
-        }
-
-        const airlockStarted = performance.now();
-        const airlock = runLocalAirlock({
-          documentId: docItem.id,
-          rawText: docItem.rawText,
-          nanoCandidates,
-          existingVault: workingVault,
-        });
-        if (decision.targetEngine !== 'on_device') {
-          // Measured, not mocked: real deterministic-shield latency and the entities it actually intercepted.
-          pushTelemetry({
-            id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-            timestamp: new Date().toISOString(),
-            task: 'pii_scan',
-            requestedMode: 'only_on_device',
-            actualSource: 'LOCAL_DETERMINISTIC',
-            latencyMs: Math.max(1, Math.round(performance.now() - airlockStarted)),
-            inputChars: docItem.rawText.length,
-            piiInterceptedCount: airlock.stats.totalDetected,
-            status: 'ok',
-            appCheckStatus: 'offline_bypass',
-            note: decision.reason,
-          });
-        }
-
-        workingVault = airlock.vault;
-        workingEntitiesByDoc[docItem.id] = airlock.entities;
-
-        const redactedImageDataUrl = await burnImageForEntities(docItem, airlock.entities);
-
-        processedIncoming.push({
-          ...docItem,
-          sanitizedText: airlock.sanitizedText,
-          redactedImageDataUrl,
-        });
-      }
+      const scan = await scanIncomingDocuments({
+        incomingDocs,
+        startVault: workingVault,
+        startEntitiesByDoc: workingEntitiesByDoc,
+        existingCategories: documents.map((d) => d.category),
+        routing: { isOnline, nanoStatus, userPreference, remoteConfig },
+        pushTelemetry,
+      });
+      if (scan.lastDecision) setLastRouterDecision(scan.lastDecision);
+      const processedIncoming = scan.processed;
+      workingVault = scan.vault;
+      Object.assign(workingEntitiesByDoc, scan.entitiesByDoc);
 
       const finalDocs = [...baseDocs, ...processedIncoming];
       setDocuments(finalDocs);
@@ -716,15 +620,10 @@ export function useWorkbenchStore() {
     setCloudFailure(null);
 
     const sanitizedCombined = combineDocumentsText(documents, 'sanitizedText');
-    const decision = decideHybridRoute({
-        categories: documents.map((d) => d.category),
+    const decision = routeSanitizedTask({
       task: 'rapid_triage',
-      charLength: sanitizedCombined.length,
-      hasImage: documents.some((d) => Boolean(d.redactedImageDataUrl)),
-      isOnline,
-      nanoStatus,
-      userPreference,
-      remoteConfig,
+      docs: documents,
+      routing: { isOnline, nanoStatus, userPreference, remoteConfig },
       isPayloadSanitized: Boolean(preFlight?.passed),
     });
     setLastRouterDecision(decision);
@@ -796,40 +695,17 @@ export function useWorkbenchStore() {
 
     const { assertion, proof, payload, disabledTokens } = await recomputeSecurityProof(documents, vault, entitiesByDoc);
     if (!assertion || !assertion.passed || !proof?.preFlightPassed) {
-      pushTelemetry({
-        id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        timestamp: new Date().toISOString(),
-        task: documents.length > 1 ? 'cross_doc_contradiction' : 'deep_redline_audit',
-        requestedMode: 'prefer_in_cloud',
-        actualSource: 'LOCAL_DETERMINISTIC',
-        latencyMs: 0,
-        inputChars: payload.length,
-        piiInterceptedCount: assertion?.leaks.length ?? 0,
-        status: 'blocked',
-        errorKind: 'layer3_preflight',
-        appCheckStatus: 'offline_bypass',
-        note: `BLOCKED by Layer 3: ${assertion?.leaks.length ?? 1} leak(s); nothing left the device.`,
-      });
+      pushTelemetry(layer3BlockedEvent(documents, assertion, payload.length));
       logHybridAnalyticsEvent('layer3_blocked', { leaks: assertion?.leaks.length ?? 1 });
-      setErrorBanner(
-        `Layer 3 Pre-Flight Circuit Breaker BLOCKED cloud escalation: ${assertion?.leaks.length ?? 1} unredacted leak(s) detected.`
-      );
+      setErrorBanner(layer3BlockedMessage(assertion));
       setIsInspectorOpen(true);
       return null;
     }
 
-    const sanitizedCombined = combineDocumentsText(documents, 'sanitizedText');
-    const task =
-      documents.length > 1 ? 'cross_doc_contradiction' : 'deep_redline_audit';
-    const decision = decideHybridRoute({
-        categories: documents.map((d) => d.category),
-      task,
-      charLength: sanitizedCombined.length,
-      hasImage: documents.some((d) => Boolean(d.redactedImageDataUrl)),
-      isOnline,
-      nanoStatus,
-      userPreference,
-      remoteConfig,
+    const decision = routeSanitizedTask({
+      task: deepAuditTask(documents),
+      docs: documents,
+      routing: { isOnline, nanoStatus, userPreference, remoteConfig },
       isPayloadSanitized: assertion.passed,
     });
     setLastRouterDecision(decision);
@@ -862,25 +738,7 @@ export function useWorkbenchStore() {
         onlyParts: retryOnly && deepAudit ? [retryOnly] : undefined,
       });
       // Partial retry: keep the half that already succeeded, fill in the re-run half.
-      const audit: DeepAuditResult =
-        retryOnly && deepAudit
-          ? {
-              ...deepAudit,
-              ...(retryOnly === 'analysis'
-                ? { contradictions: fresh.contradictions, redlines: fresh.redlines }
-                : { playbook: fresh.playbook }),
-              incompleteParts: fresh.incompleteParts,
-              cachedParts: (deepAudit.cachedParts ?? []).filter(
-                (p) => p !== retryOnly || fresh.incompleteParts?.includes(p)
-              ),
-              generatedAt: fresh.generatedAt,
-            }
-          : fresh;
-      if (!audit.incompleteParts?.length) delete audit.incompleteParts;
-      if (!audit.cachedParts?.length) {
-        delete audit.cachedParts;
-        delete audit.cacheInfo;
-      }
+      const audit = mergeRetriedAudit(deepAudit, fresh, retryOnly);
       const golden = activeSamplePackId ? SAMPLE_GOLDEN_AUDITS[activeSamplePackId] : undefined;
       const finalAudit =
         partialFailure && golden ? fillFromGolden(audit, golden, [partialFailure.part]) : audit;
