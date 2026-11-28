@@ -1,21 +1,21 @@
-# 公開洩漏評測
+# Public Leak Benchmark
 
-2026-11-26 05:18（台北），20 份英文虛構文件包含 50 個已標註的敏感值。在同一批文件上，規則遮蔽 34 個，加入 Chrome 裝置端 Nano 後遮蔽 44 個。六份文件在 Nano 加規則模式仍各露出一個值。
+Measured on **2026-11-26 05:18 (Taipei / 2026-11-25 21:18 UTC)** across **20 fictional English documents** containing **50 labeled sensitive values**. On the same corpus, deterministic rules alone masked **34/50** values; adding Chrome on-device **Gemini Nano** masked **44/50**. Six documents still exposed one value each in Nano + rules mode.
 
-| 模式 | 已遮蔽或由斷路器阻擋 | 仍在可送出內容中 | 攔下的請求 |
-| --- | ---: | ---: | ---: |
-| 只用規則 | 34 / 50 | 16 / 50 | — |
-| 規則加 Layer 3 | 34 / 50 | 16 / 50 | 0 / 40 |
-| Nano 加規則 | 44 / 50 | 6 / 50 | — |
+| Mode | Masked or blocked by circuit breaker | Still present in sendable prompt | Blocked requests |
+| :--- | ---: | ---: | ---: |
+| Rules only | 34 / 50 | 16 / 50 | — |
+| Rules + Layer 3 | 34 / 50 | 16 / 50 | 0 / 40 |
+| Gemini Nano (on-device) + rules | **44 / 50** | 6 / 50 | — |
 
-每個標註按文件計一次。計分器逐份建出正式程式使用的 analysis 與 playbook 提示，對完整字串做大小寫不敏感的比對。只要其中一個可送出的提示仍含標註原值，就記為漏掉。第二欄模式會先以該文件的代號庫執行正式 Layer 3；本批資料沒有觸發阻斷，所以與規則單獨使用的結果一致。這項量測涵蓋文字中完整字串的露出；部分露出、語意可識別性、圖片、誤遮率與其他語言均需另行量測。
+Each labeled value is scored once per document. The scorer builds the exact `analysis` and `playbook` prompts used by the production app and checks for exact-string exposure (case-insensitive). If either sendable prompt still contains the original labeled value, it is counted as leaked. The second mode runs the production Layer 3 circuit breaker with that document's local vault; none of the 40 requests tripped a hard block on this corpus, so its count matches rules-only. This benchmark covers exact-string exposure in text only; partial exposure, semantic re-identification, images, false-positive rate, and other languages require separate evaluation.
 
-Nano 欄透過網頁呼叫正式 Stage 1 的 Firebase AI Logic 裝置端掃描器。20 列 Actual Source 全部為 ON_DEVICE，SDK 逐份記錄的耗時合計 33,511 ms。個別仍露出的文件是 lease、referral、follow-up、transfer、itinerary 和 memo。這批資料使用虛構姓名、保留的測試網域、文件用 IP 與虛構號碼，另在頁面限制外連。
+The Nano column calls the production Stage 1 Firebase AI Logic on-device scanner from the browser. All 20 runs reported `Actual Source = ON_DEVICE` with `0` cloud calls and a combined SDK-recorded latency of **33,511 ms**. The six documents that still exposed one value each were `lease`, `referral`, `follow-up`, `transfer`, `itinerary`, and `memo`. The corpus uses fictional names, reserved `.example` domains, documentation IP ranges, and fictional numbers, with outbound connections restricted on the benchmark page.
 
-## 重現
+## Reproduce
 
-1. 在儲存庫執行 `npm ci` 與 `npm run bench`。Node 重跑規則與 Layer 3，再核對 Chrome 紀錄中的語料雜湊、文件 ID、ON_DEVICE 來源及計數範圍。
-2. 在已設定本機 Firebase Web 環境、可用 Nano 的 Chrome，執行 `npm run dev` 後開啟本機的 `/bench/nano.html`，按「執行裝置端評測」。
-3. 看到全部 20 份完成後，下載結果至 `bench/nano-result.json` 並重跑 `npm run bench`。任何一列回退到其他來源時，該次評測會中止。CI 使用儲存庫內註明日期的 Chrome 紀錄。
+1. In the repository, run `npm ci` and `npm run bench`. Node re-runs the rules and Layer 3 columns, then verifies the corpus hash, document IDs, `ON_DEVICE` source, and score bounds recorded from Chrome.
+2. In Chrome with a local Firebase Web config and Gemini Nano ready, run `npm run dev`, open `/bench/nano.html`, and click **Run on-device benchmark**.
+3. Once all 20 documents finish, download the result to `bench/nano-result.json` and re-run `npm run bench`. If any row falls back to another inference source, the benchmark aborts. CI verifies the dated Chrome record checked into the repository.
 
-[20 份標註語料](../bench/corpus.mjs) · [計分實作](../bench/score.mjs) · [逐份 Chrome 紀錄](../bench/nano-result.json)
+[20-document labeled corpus](../bench/corpus.mjs) · [Scoring implementation](../bench/score.mjs) · [Per-document Chrome record](../bench/nano-result.json)

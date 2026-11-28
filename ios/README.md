@@ -13,15 +13,15 @@ VeilBench Pocket is the iPhone version of VeilBench's zero-leak contract audit. 
 
 **Stage 1 never falls back to the cloud.** It uses `.systemModel()` only, never `.hybridModel`. The model may be unavailable (`SystemLanguageModel.default.availability`), it may throw, or it may report an unexpected model version. In each of these cases Pocket continues with the regex layer only, on the phone, and shows a "Local rules only" notice. Raw text is never sent anywhere. The cloud step accepts only a payload that has passed Layer 3, and it re-checks that payload right before sending.
 
-## 稽核同步與接力
+## Audit Sync and Relay
 
-Pocket 從 Remote Config 的 `cloud_model_name` 和 `cloud_model_fallbacks` 取得模型順序。首次離線時使用內建順序，已啟用的遠端值可在離線時繼續使用。
+Pocket reads `cloud_model_name` and `cloud_model_fallbacks` from Firebase Remote Config to determine the cloud model order. When offline on first launch it uses the built-in fallback chain, and previously activated remote values remain available offline.
 
-完成稽核後，Pocket 對每個即將保存的風險標題、說明與信件重跑 Layer 3。通過後使用 Anonymous Auth 將稽核寫到 `sanitized_sessions`，收到 Firestore 伺服器確認才顯示 **Synced**。Firestore 啟用磁碟持久化。首次匿名登入仍需要連線。原始輸入與本機代號表只存在記憶體。
+After an audit completes, Pocket re-runs Layer 3 on every risk title, description, and email before saving. Once verified, it signs in with Anonymous Auth and writes the tokenized audit to `sanitized_sessions`, showing **Synced** only after Cloud Firestore confirms the server write. Firestore disk persistence is enabled (initial anonymous sign-in still requires network connectivity). Raw document text and the local token vault remain in memory only.
 
-在稽核結果點選 **Create share link** 後，Pocket 用系統安全亂數產生 16 位元組，以 32 個小寫十六進位字元作為接力文件 ID。Firestore 確認寫入後，點 **Share audit link** 即可使用 iOS 分享選單。正式站的分享連結將 ID 放在網址片段 `#relay=<id>`，收件方開啟網頁時以 Firebase 身分讀取這一筆接力。
+Tapping **Create share link** on an audit generates 16 cryptographically secure random bytes (32 lowercase hex characters) as a relay document ID. Once Firestore confirms the write, **Share audit link** opens the iOS share sheet with the production URL carrying the ID in the fragment (`#relay=<id>`), so the web app can load that tokenized relay under its Firebase session.
 
-伺服器允許連結最多有效 15 分鐘，Pocket 設為 14 分 30 秒，預留手機和伺服器之間的時鐘誤差。任何取得連結的人都能在到期前讀取，因此請只分享給指定收件人。接力文件只有 `createdAt`、`expiresAt`、已通過檢查的風險條目 `flags` 與代號版信件 `emailSanitized`。到期後伺服器拒絕新讀取，收件人先前取得的副本仍存在。
+The server allows relay links to live for at most 15 minutes; Pocket sets expiry to 14 minutes 30 seconds to allow for clock skew between the phone and server. Anyone holding the link can read it before expiry, so share it only with intended recipients. Each relay document contains only `createdAt`, `expiresAt`, Layer 3-checked `flags`, and `emailSanitized`. After expiry the server rejects new reads, while any copy already loaded by the recipient stays on their screen.
 
 ## Where Firebase AI Logic is called
 

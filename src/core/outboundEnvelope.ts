@@ -30,7 +30,8 @@ export const DEEP_AUDIT_INSTRUCTIONS = [
 export const DEEP_AUDIT_TASK_ANALYSIS = [
   'TASK A — Return JSON with:',
   '"contradictions": every cross-document conflict (use the locally computed relations; cite tokens, never guess values);',
-  '"redlines": at most 3 surgical clause rewrites.',
+  '"redlines": up to 3 surgical clause rewrites that protect the USER\'s interests (in a contract, the contractor [PARTY_CONTRACTOR_1]; otherwise the person or account owner reviewing the documents).',
+  'NEVER propose conceding to a lower fee, worse payment terms, or harsher counterparty schedule—always rewrite clauses to enforce the user-favorable terms and cap/remove toxic traps (e.g., unlimited liability, excessive non-compete, punitive penalties) so redlines match the negotiation playbook.',
   'Keep every string under 60 words.',
 ].join('\n');
 

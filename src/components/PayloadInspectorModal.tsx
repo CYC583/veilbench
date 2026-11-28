@@ -348,7 +348,11 @@ function EgressLedgerSection({ ledger, locale, onDownload }: {
   const aiCalls = ledger.filter(e => e.channel === 'ai_logic');
   const aiBytes = aiCalls.reduce((n, e) => n + e.bytes, 0);
   const unmatched = aiCalls.filter(e => e.carriesAuditedText === false).length;
-  const recent = ledger.slice(-12).reverse();
+  // Always keep every AI Logic call visible so the table reconciles 1:1 with the summary count and bytes,
+  // alongside the most recent non-AI requests (up to 12 total non-AI rows).
+  const nonAiRecent = ledger.filter(e => e.channel !== 'ai_logic').slice(-12);
+  const visibleIds = new Set([...aiCalls.map(e => e.id), ...nonAiRecent.map(e => e.id)]);
+  const recent = ledger.filter(e => visibleIds.has(e.id)).reverse();
   return (
     <div className="mt-3 rounded-md border border-[#E2E5EA] bg-[#FFFFFF]" data-testid="egress-ledger">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E2E5EA] px-3 py-2">
